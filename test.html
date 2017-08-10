@@ -1,13 +1,33 @@
 <!DOCTYPE html>
 <html>
 	<head>
-		<script src="build/oring.js"></script>
-		<script>
+		<script src="build/oring.min.js"></script>
+	</head>
+	<body>
+		<div id="log"></div>
+	<script>
 
-			var conn = oring.create("http://localhost:1234?hej=3");
+	function log(text) {document.getElementById('log').innerHTML += text + "<br>";}
 
-			conn.start();
+			var oringClient = oring.create("http://localhost:1234?hej=3", {
+				transferProtocols : ['longPolling'],
+				hubs : ['scrapbook', 'user']
+			});
+
+			oringClient.start().done(function(conn) {
+				 log("Connected using '"+conn.transferProtocol+"'");
+
+					conn.setUserContext("hej").done(function() {
+						console.warn("Vi fick svar (Egentligen inte..)");
+					});
+
+
+			})
+			.fail(function() {
+				log("<span style='color:red'>Could not connect to server. Remember to start it!</span>");
+			});
 
 		</script>
-	</head>
+	</body>
+
 </html>

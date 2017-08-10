@@ -15,17 +15,19 @@ console.log("PARAMS", JSON.stringify(eventArgs));
 
 });
 
-server.setShared('setUserContext', function() {
+server.setShared('setUserContext', server.requestResponse(function() {
 
-});
+}));
 
 server.createHub("scrapboard", {
-	refreshBook : function() {
+	'refreshBook' : server.requestResponse(function() {
+
+		this.Deferred();
 
 
 		//return this.promise(); // meaning that a response will be sent back!
-	},
-	getOnlineUsers : function() {
+	}),
+	'getOnlineUsers' : function() {
 		// mysql get online users...
 
 

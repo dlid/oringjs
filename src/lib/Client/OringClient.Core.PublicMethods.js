@@ -5,17 +5,16 @@
 /**
  * Used to open a connection to a oring server
  */
-var publicCreateConnectionFn = function(urlString, hubArray) {
-	hubArray = hubArray || [];
+var publicCreateConnectionFn = function(urlString, options) {
 
-	var options = {
+	var settings = _core.extend({
 		url : urlString,
-		hubs : hubArray
-	};
+		hubs : []
+	}, options);
 
-	console.warn("options", options);
+	console.warn("options", settings);
 
-	var connection = new OringClient(options);
+	var connection = new OringClient(settings);
 
 	return connection;
 }

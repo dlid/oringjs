@@ -1,8 +1,9 @@
 var extend  = require("extend"),
 		http = require('http'),
 		winston = require('winston'),
-		uuid = require('node-uuid'),
-		OringClientBase = require('./Oring.ClientBase.js');
+		uuid = require('uuid'),
+		OringClientBase = require('./Oring.ClientBase.js'),
+    OringWebMethod = require('./Oring.Server.WebMethodBase.js');
 
 var OringServer = function(protocolArray, options) {
 
@@ -49,7 +50,11 @@ var OringServer = function(protocolArray, options) {
 	  				var namespace = (hub == "*") ? "" : hub + ".";
 	  				for (var methodName in _methods[hub]) {
 	  					if (_methods[hub].hasOwnProperty(methodName)) {
-	  						result.push(namespace + methodName);
+
+	  						result.push({
+                  n : namespace + methodName,
+                  r : _methods[hub][methodName].hasResponse()
+                });
 	  					}
 	  				}
 	  			}
@@ -168,14 +173,21 @@ var OringServer = function(protocolArray, options) {
 
   		for (var methodName in hubObject) {
   			if (hubObject.hasOwnProperty(methodName)) {
-  				if (typeof hubObject[methodName] == "function") {
-  					_methods[hubName][methodName] = hubObject[methodName];
-  				}
+          var o = createWebMethod(methodName, hubObject[methodName]);
+          if (o) {
+            _methods[hubName][methodName] = o;
+          }
   			}
   		}
 
   	}
 
+  }
+  this.requestResponse = function(callback) {
+    return Object.create(OringWebMethod, {
+      _hasResponse : {value : true},
+      _callback : {value : callback}
+    });
   }
 
   this.on = function(eventName, callback){
@@ -190,14 +202,38 @@ var OringServer = function(protocolArray, options) {
 
   _logger = createLogger('oring.server');
 
+  function createWebMethod(functionName, callback) {
+      var method;
+
+      if (typeof callback == "undefined") return;
+
+    if (typeof callback == "function") {
+      method = Object.create(OringWebMethod, {
+        _callback : {value : callback},
+        _name : {value : functionName}
+      });
+    } else if (typeof callback.hasResponse === "function") {
+      method = callback;
+      method.setName(functionName);
+      _logger.info("jaha, en funktion");
+    } else {
+      _logger.warn("Bad parameters");
+      return;
+    }
+
+    return method;
+  }
+
   this.setShared = function(functionName, callback) {
-  	if (!_methods['*'][functionName]) {
-  		_methods['*'][functionName] = {
-  			callback : callback
-  		};  		
-  	} else {
-  		_logger.warn("Shared function already defined " + functionName);
-  	}
+    var method = createWebMethod(functionName, callback);
+    if (method) {
+    	if (!_methods['*'][functionName]) {
+    		_methods['*'][functionName] = method;
+        console.log("har", method.hasResponse() ? "1" : "0");
+    	} else {
+    		_logger.warn("Shared function already defined " + functionName);
+    	}
+    }
   }
 
 	// Create the protocols

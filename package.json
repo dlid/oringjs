@@ -5,6 +5,7 @@
   "version": "0.0.1",
   "license": "MIT",
   "dependencies": {
+    "ajax-request": "^1.2.3",
     "crypto": "0.0.3",
     "deferred-js": "^1.0.2",
     "del": "^3.0.0",
@@ -22,6 +23,8 @@
     "jquery-deferred": "^0.3.0",
     "md5": "^1.0.0",
     "node-uuid": "^1.4.8",
+    "simple-ajax": "^2.6.0",
+    "uuid": "^3.1.0",
     "websocket": "^1.0.24",
     "winston": "^2.3.1"
   },

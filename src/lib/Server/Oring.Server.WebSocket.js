@@ -17,6 +17,7 @@ var create = function() {
 			},
 			start : {
 				value : function() {
+
 					var oringServer = this.oringServer,
 								webServer = oringServer.getWebServer(),
 							options = oringServer.getOptions(protocolName, this.defaultOptions),
@@ -51,8 +52,12 @@ var create = function() {
 								if (!eventResult.cancel) {
 									console.log("GROUPS " + JSON.stringify(eventResult.groups) )
 									conn = request.accept(options.protocolName, request.origin);
-									client.send("oring:handshake", { methods : oringServer.getMethodsForClient(client)});
+									client.send("oring:handshake", { id : client.getConnectionId(), methods : oringServer.getMethodsForClient(client)});
 
+									conn.on('message', function(m) {
+											console.log("RECEIVED", m);
+										})
+  
 									
 								} else {
 									request.reject(403, eventResult.reason);

@@ -1,6 +1,6 @@
 
 
-function WebSocketClient() {
+function LongPollingClient() {
 
 	var _ws,
 			self = this;
@@ -24,45 +24,33 @@ function WebSocketClient() {
 
 
 		var url = "";
-		if (uri.schema == "https"||uri.schema == "wss")
-			url = "wss://";
+		if (uri.schema == "https"|| uri.schema == "wss")
+			url = "https://";
 		else 
-			url = "ws://";
+			url = "http://";
 
 		url += uri.path;
 
 		if (uri.port) url += ":" + uri.port;
 		if (uri.querystring) url += "?" + uri.querystring;
+
+		if (uri.querystring) url += "&"; else url +="?";
+		url += "__oringprotocol=longPolling";
 		if (hubs && hubs.length > 0)  {
 			if (uri.querystring) url += "&";
 			url += "__oringhubs=" + encodeURIComponent(hubs.join(','));
 		}
 
+		console.warn("longPolling", url)
+		ajax({
+			url : url
+		}, function() {}, function() {
+			
+		})
 
-		_ws = new WebSocket(url, "oringserver");
-		_ws.onopen = function(e) {
-			deferred.resolve();
-		}
-
-		_ws.onclose = function(e) {
-			logError("Connection closed",e);
-			// Try a few times? Then let go and attempt again...
-			if (typeof self.onclose == "function") {
-				self.onclose();
-			}
-		}
-
-		_ws.onerror = function(e) {
-			if(deferred) {
-				deferred.reject(e);
-			}
-		}
-
-		_ws.onmessage = function(msg) {
-			if (msg && msg.data) {
-				self.onmessage(msg.data);
-			}
-		}
+		setTimeout(function() {
+			deferred.reject();
+		}, 1500);
 
 		return deferred.promise();
 
@@ -71,4 +59,4 @@ function WebSocketClient() {
 }
 
 
-_clients.push( {name : "webSocket", class : WebSocketClient});
+_clients.push({name : "longPolling", class : LongPollingClient});

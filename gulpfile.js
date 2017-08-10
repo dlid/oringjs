@@ -19,8 +19,8 @@ var gulp = require('gulp'),
       + ". " + webPage
    		+ " License: "+package.license 
   		+ " */\n";
-      return [headerComment + '(function(win) {\n', "\nwin.oring = new Oring(_core);\n}(window));\n"];
-    }
+      return [headerComment + '(new function(win) { \n', "\nwin.oring = new Oring(_core);  \n}(window));\n"];
+    } 
 
 
 gulp.task('cleanup:before', function () {
@@ -50,6 +50,7 @@ gulp.task('build-core-js',  function() {
    return gulp.src([
       'src/lib/Client/Oring.js',
       'src/lib/Client/OringClient.Core.js',
+      'node_modules/js-extend/extend.js',
       'build/_deferred_temp.js',
       'src/lib/Client/OringClient.Core.*.js'
     ])
@@ -92,6 +93,7 @@ gulp.task('scripts', function() {
           min : '.min.js'
         }
       }))
+      .pipe(inject.prepend(';'))
       //.pipe(inject.wrap(to_inject_min()[0], to_inject()[1]))
       .pipe(gulp.dest('build'));
 });
