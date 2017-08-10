@@ -1,0 +1,32 @@
+{
+  "name": "OringJS",
+  "description": "",
+  "repository": "https://github.com/dlid/oringjs",
+  "version": "0.0.1",
+  "license": "MIT",
+  "dependencies": {
+    "crypto": "0.0.3",
+    "deferred-js": "^1.0.2",
+    "del": "^3.0.0",
+    "extend": "^3.0.1",
+    "fs": "0.0.2",
+    "gulp": "^3.9.1",
+    "gulp-concat": "^2.6.1",
+    "gulp-indent": "^1.0.1",
+    "gulp-inject-string": "^1.1.0",
+    "gulp-jshint": "^2.0.4",
+    "gulp-rename": "^1.2.2",
+    "gulp-replace": "^0.6.1",
+    "gulp-uglify": "^3.0.0",
+    "http": "0.0.0",
+    "jquery-deferred": "^0.3.0",
+    "md5": "^1.0.0",
+    "node-uuid": "^1.4.8",
+    "websocket": "^1.0.24",
+    "winston": "^2.3.1"
+  },
+  "devDependencies": {
+    "gulp-minify": "^1.0.0",
+    "run-sequence": "^2.1.0"
+  }
+}
