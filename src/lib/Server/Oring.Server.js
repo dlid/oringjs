@@ -4,7 +4,10 @@ var extend  = require("extend"),
 		uuid = require('uuid'),
 		OringClientBase = require('./Oring.ClientBase.js'),
     OringWebMethod = require('./Oring.Server.WebMethodBase.js'),
-    serverUtilities = require('./Oring.Server.Utilities.js');
+    serverUtilities = require('./Oring.Server.Utilities.js'),
+    IncomingMessageBase = require('./Oring.Server.IncomingMessageBase.js'),
+    OutgoingMessageBase = require('./Oring.Server.OutgoingMessageBase.js'),
+    Deferred = require('deferred-js');
 
 var OringServer = function(protocolArray, options) {
 
@@ -17,12 +20,19 @@ var OringServer = function(protocolArray, options) {
 			_eventNames = ['connected', 'webRequest'],
 			settings = extend({
 				port : 1234
-			}, options);
+			}, options),
+      _clients = {},
+      _clientCount = 0,
+      _disconnectedClients = {};
 
 		this.getWebServer = function() {
 	  	return _webServer;
 	  }
 
+
+    function createMessage(messageType, messageData, invocationId) {
+        return OutgoingMessageBase
+      }
 
   // Utilities for the protocols to use
   function _internalServerInstance(protocolInstance) {
@@ -41,12 +51,41 @@ var OringServer = function(protocolArray, options) {
   			});
 
   		},
+      getConnectionById : function(id) {
+        if (_clients[id]) 
+          return _clients[id];
+        return null;
+      },
+      lostConnection : function(client) {
+        // Connection was lost, but we will give the user some time to re-connect
+        _disconnectedClients[client.getConnectionId()] = client;
+        delete _clients[client.getConnectionId()];
+        _clientCount--;
+        
+        var clientKeys = Object.keys(_clients);
+
+        for(var i = 0; i < clientKeys.length; i++) {
+          if (clientKeys[i] != client.getConnectionId()) {
+            _clients[clientKeys[i]].send( OutgoingMessageBase.create("connection-removed", { count : _clientCount }) );
+          }
+        }
+
+      },
+      addConnection : function(client) {
+        _clients[client.getConnectionId()] = client;
+        _clientCount++;
+
+        var clientKeys = Object.keys(_clients);
+        for(var i = 0; i < clientKeys.length; i++) {
+          if (clientKeys[i] != client.getConnectionId()) {
+            _clients[clientKeys[i]].send( OutgoingMessageBase.create("connection-added", { count : _clientCount }) );
+          }
+        }
+
+      },
       on : _self.on,
   		getMethodsForClient : function(client) {
   			var result = [];
-  			console.log( JSON.stringify(_methods) );
-
-
   			for(var hub in _methods) {
   				if(_methods.hasOwnProperty(hub)) {
 	  				var namespace = (hub == "*") ? "" : hub + ".";
@@ -64,6 +103,7 @@ var OringServer = function(protocolArray, options) {
   			return result;
 
   		},
+      parseIncomingMessage : IncomingMessageBase.parse,
   		triggerConnectedEvent : function(client, parameters) {
   			if (_eventhandlers['connected']) {
   				for (var i=0; i < _eventhandlers['connected'].length; i++) {
@@ -109,15 +149,35 @@ var OringServer = function(protocolArray, options) {
 		  	if (typeof settings[name] !== "undefined") return settings[name];
 		  	return defaults;
 		  },
-		  createMessage : function(messageType, messageData, invocationId) {
-		  	var msg = {
-		  		_t : messageType,
-		  		_d : messageData,
-		  		_i : invocationId,
-		  		_w : (new Date()).getTime()
-		  	};
-		  	return JSON.stringify(msg);
-		  }
+		  createMessage : OutgoingMessageBase.create,
+      messageReceived : function(incomingMessage) {
+        var deferred  = new Deferred();
+
+        if (incomingMessage.getType() == "oring:invoke") {
+          var hub = incomingMessage.getData().hub,
+              method = incomingMessage.getData().name,
+              args = incomingMessage.getData().args;
+
+            if (_methods[hub] && _methods[hub][method]) {
+              console.warn("---- invoke" + hub + "." + method );
+            }
+        }
+
+        if (!incomingMessage.expectingResponse()) {
+          deferred.resolve(OutgoingMessageBase.create("oring:ack"));
+        } else {
+          
+          console.warn("RECEIVED", incomingMessage);
+          setTimeout(function() {
+            deferred.resolve(OutgoingMessageBase.create("oring:response__" + incomingMessage.getInvocationID(), {
+              data : 5,
+              something : 'apa'
+            }));
+          },1500);
+        }
+        return deferred.promise();
+      }
+
   	}
   }
 
@@ -167,7 +227,7 @@ var OringServer = function(protocolArray, options) {
 				});
   		},
   		info : function(message, data) {
-				winston.log('info', '[' + name + '] ' + (typeof message == "string" ? message : ""), {data: data});
+			//	winston.log('info', '[' + name + '] ' + (typeof message == "string" ? message : ""));
   		},
   		warn :function(message, data) {
   			winston.debug('warn', '[' + name + '] ' + (typeof message == "string" ? message : ""), {  
@@ -268,7 +328,17 @@ var OringServer = function(protocolArray, options) {
 	this.start = function() {
 		_webServer = http.createServer(function (request, response) {
 
-	        _logger.info('HTTP Request Received ' + request.url)
+        if (request.method == "OPTIONS") {
+          response.writeHead(200, {
+              'Access-Control-Allow-Origin' : request.headers["Origin"] ? request.headers["Origin"] : '*',
+              'Access-Control-Allow-Methods' : 'POST,GET',
+              'Access-Control-Allow-Headers' : 'content-type,x-oring-request'
+            });
+          response.end()
+          return;
+        }
+
+	        _logger.info('HTTP Request Received ' + request.url + " " + request.method);
 	        
           var e = triggerWebRequestEvent(request, response, null);
 

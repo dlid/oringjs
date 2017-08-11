@@ -382,21 +382,34 @@
   var ajax = function(options, success, error) {
       var settings = _core.extend({
           method : "get",
-          url : null
+          url : null,
+          headers : {},
+          data : null
       }, options),
-  	http = createXMLHttp();
+    	http = createXMLHttp();
 
-      http.open("get", settings.url, true);
-      http.send(null);
-      http.onreadystatechange = function() {
-      if (http.readyState === 4) {
-          if (http.status === 200) {
-              success.call(null, http.responseText);
-          } else {
-              error.call(null, http.responseText);
-          }
+      http.open(settings.method, settings.url, true);
+      var dataToSend = null,
+          headerKeys = getKeys(settings.headers);
+
+      for (i = 0; i < headerKeys.length; i+=1) {
+        http.setRequestHeader(headerKeys[i], settings.headers[headerKeys[i]]);
       }
-    };
+
+      if (settings.method.toLowerCase() == "post" ) {
+        dataToSend = settings.data;
+      }
+
+      http.send(dataToSend);
+      http.onreadystatechange = function() {
+        if (http.readyState === 4) {
+            if (http.status === 200) {
+                success.call(null, http.responseText);
+            } else {
+                error.call(null, http.responseText);
+            }
+        }
+      };
   },
   /**
    * Creates a xml http request
@@ -422,26 +435,43 @@
   function LongPollingClient() {
 
   	var _ws,
-  			self = this;
+  		self = this,
+  		_connectionId,
+  		_sendUrl,
+  		_opt;
 
   	this.onclose = null;
   	this.onmessage = null;
 
   	this.send = function(message) {
   		if (message.__proto__ == Request) {
-  			if (_ws) {
-  				console.warn("SEND", message);
-  				_ws.send(message.toJSON());
+  			if (_connectionId) {
+  				console.warn("queue message for polling", _connectionId, message);
+  				//_ws.send(message.toJSON());
+  				ajax({
+  					method : 'post',
+  					url : _sendUrl,
+  					headers : {
+  						"X-Oring-Request" : _connectionId,
+  						"Content-Type" : "application/json"
+  					},
+  					data : message.toJSON()
+  				}, 
+  				function(responseBody) {
+  					self.onmessage(_opt.parseMessage(responseBody));
+  				},
+  				function(r) {
+  					console.warn("FAILED",r);
+  				});
   			}
   		} else {
   			logError("That's no request");
   		}
   	}
 
-  	this.start = function(uri, hubs) {
+  	this.start = function(uri, hubs, opt) {
+  		_opt = opt;
   		var deferred = _core.Deferred();
-
-
   		var url = "";
   		if (uri.schema == "https"|| uri.schema == "wss")
   			url = "https://";
@@ -455,19 +485,58 @@
 
   		if (uri.querystring) url += "&"; else url +="?";
   		url += "__oringprotocol=longPolling";
+  		_sendUrl = url;
   		if (hubs && hubs.length > 0)  {
   			if (uri.querystring) url += "&";
   			url += "__oringhubs=" + encodeURIComponent(hubs.join(','));
   		}
 
-  		console.warn("longPolling", url)
+  	
+
+
   		ajax({
   			url : url
-  		}, function() {
-  			deferred.resolve();
+  		}, function(r) {
+  			// We pass the message immediatly since the onmessage is not hooked up until the connection is created
+  			
+  			// We need the connection id
+  			var message = _opt.parseMessage(r);
+  			if (message) {
+  				if (message.data.id) {
+  					_connectionId = message.data.id;
+  					deferred.resolve({
+  						message : message
+  					});
+
+  					setInterval(function() {
+  						ajax({
+  							url : _sendUrl + "&ping",
+  							headers : {
+  								"X-Oring-Request" : _connectionId,
+  								"Content-Type" : "application/json"
+  							}
+  						}, function(r) {
+  							var o;
+  							try {o = JSON.parse(r);} catch(e) {}
+  							if (typeof o == "object" && o.length > 0) {
+  								for (var i=0; i < o.length; i+=1) {
+  									var m = _opt.parseMessage(o[i]);
+  									if(m) {
+  										self.onmessage(m);
+  									}
+  								}
+  							}
+  						}, function() {
+  							console.warn("longPolling ping failed...");
+  						});
+  					}, 10000)
+
+  				}
+  			} else {
+  				deferred.reject("Invalid message");
+  			}
   		}, function() {
   			deferred.reject();
-
   		})
 
 
@@ -510,8 +579,10 @@
   	getData : function() {
   		return this.data;
   	},
+  	getInvocationID : function() {
+  		return this._i;
+  	},
   	toJSON : function() {
-
   		return JSON.stringify({
   			_t : this.type,
   			_d : this.data,
@@ -531,7 +602,11 @@
   function parseMessage(msg) {
   	var o;
 
-  	try { o = JSON.parse(msg) } catch(e) { o = null;}
+  	if (typeof msg === "string") {
+  		try { o = JSON.parse(msg) } catch(e) { o = null;}
+  	} else if (typeof msg === "object") {
+  		o = msg;
+  	}
   	if (typeof o === "object") {
   		if (typeof o._d !== "undefined" && typeof o._t !== "undefined" && typeof o._w !== "undefined") {
   			var m = Object.create(ServerMessage, {
@@ -621,7 +696,6 @@
   	this.send = function(message) {
   		if (message.__proto__ == Request) {
   			if (_ws) {
-  				console.warn("SEND", message);
   				_ws.send(message.toJSON());
   			}
   		} else {
@@ -629,7 +703,7 @@
   		}
   	}
 
-  	this.start = function(uri, hubs) {
+  	this.start = function(uri, hubs, opt) {
   		var deferred = _core.Deferred();
 
 
@@ -651,7 +725,7 @@
 
   		_ws = new WebSocket(url, "oringserver");
   		_ws.onopen = function(e) {
-  			deferred.resolve();
+  			deferred.resolve({});
   		}
 
   		_ws.onclose = function(e) {
@@ -670,7 +744,7 @@
 
   		_ws.onmessage = function(msg) {
   			if (msg && msg.data) {
-  				self.onmessage(msg.data);
+  				self.onmessage(opt.parseMessage(msg.data));
   			}
   		}
 
@@ -734,22 +808,32 @@
   				context = {},
   				methodName;
 
+              if (!methods) return null;
+
+              var name ;
   			for (i = 0; i < methods.length; i++) {
-  				var name = methods[i].n;
-  				if (name.indexOf('.') == -1) {
-  					var methodName = methods[i].n,
-  							hasResponse = methods[i].r;
-  					context[methods[i].n] = function() {
-  						var _i = null;
-  						if (hasResponse) {_i = createInvocationId();}
-  						return methodInvocationCallback('*', methodName,  _i, argumentsToArray(arguments));
-  					}
-  				}
+  				name =  methods[i].n;
+  				
+                  if (name.indexOf('.') === -1) {
+                      methodName = name;
+                      hub = "*";
+                  } else {
+                      var d = name.split('.');
+                      hub = d[0];
+                      methodName = d[1];
+                  }
+
+  				context[methodName] = function(hub, name, hasResponse) {
+                      return function() {
+                          console.warn("CALL", hub, name);
+                          var _i = null;
+                          if (hasResponse) {_i = createInvocationId();}
+                          return methodInvocationCallback(hub, name,  _i, argumentsToArray(arguments));
+                      }
+                  }(hub, methodName, methods[i].r);
+  				
   			}
-  			console.warn("context", context);
-
   			return context;
-
   		}
 
   		return null;
@@ -781,6 +865,8 @@
   			}
   			ix = -1; c = null;
 
+              var _pendingRequests = {};
+
   			function tryNext() {
   				ix+=1;
   				if (ix < _preferredClients.length) {
@@ -790,12 +876,16 @@
   						console.warn("Connection was lost");
   					};
   					
-  					c.start(_uri, settings.hubs)
-  						.done(function() {
-  							
-  							c.onmessage = function(message) {
-  								var m = parseMessage(message);
-  								console.warn("MSG", m);
+  					c.start(_uri, settings.hubs, {
+                          parseMessage : parseMessage
+                      })
+  						.done(function(e) {
+  							var initialMessage = null;
+                              if (e.message)
+                                  initialMessage = e.message;
+
+  							c.onmessage = function(m) {
+  								
   								if (!handshakeComplete) {
   									if (m.getType() == "oring:handshake") {
   										handshakeComplete = true;
@@ -804,18 +894,21 @@
 
   											var msg = createMessage("oring:invoke", {hub : hub, name : methodName, args : arguments}, invocationId);
 
-  											if (invocationId) {
-  												console.warn("WOA! Listen for", "oring:response__" + invocationId);
-  												setTimeout(function() {
-  													invokeDeferred.resolve();
-  												}, 2000);
-  											}
+      											if (invocationId) {
 
-  											c.send(msg);
+                                                      _pendingRequests["oring:response__" + invocationId] = {
+                                                          _created : (new Date()).getTime(),
+                                                          _def : invokeDeferred
+                                                      };
 
-  											if (!invocationId) {
-  												invokeDeferred.resolve();
-  											}
+      												console.warn("WOA! Listen for", "oring:response__" + invocationId);
+                                                  }
+
+      											c.send(msg);
+
+      											if (!invocationId) {
+      												invokeDeferred.resolve();
+      											}
 
   											return invokeDeferred.promise();
   										});
@@ -828,11 +921,17 @@
   										console.warn("Message received without handshake...", m);
   									}
   								} else {
-  									console.warn("Ok, we're cool. Message is ", m);
+  									console.warn("[incoming] ", m);
+                                      if (typeof _pendingRequests[m.getType()] != "undefined") {
+                                          _pendingRequests[m.getType()]._def.resolve(m.getData());
+                                          return;
+                                      }
   								}
   							};
-
-  							console.warn("Alright, " + _preferredClients[ix].name + " succeeded");
+                              console.warn("Alright, " + _preferredClients[ix].name + " succeeded");
+                              if (initialMessage) {
+                                  c.onmessage(initialMessage);
+                              }
 
 
   						})

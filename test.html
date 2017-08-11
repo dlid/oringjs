@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 	<head>
-		<script src="build/oring.min.js"></script>
+		<script src="build/oring.js"></script>
 	</head>
 	<body>
 		<div id="log"></div>
@@ -10,17 +10,16 @@
 	function log(text) {document.getElementById('log').innerHTML += text + "<br>";}
 
 			var oringClient = oring.create("http://localhost:1234?hej=3", {
-				transferProtocols : ['longPolling'],
+				transferProtocols : ['webSocket', 'longPolling'],
 				hubs : ['scrapbook', 'user']
 			});
 
 			oringClient.start().done(function(conn) {
 				 log("Connected using '"+conn.transferProtocol+"'");
 
-					conn.setUserContext("hej").done(function() {
-						console.warn("Vi fick svar (Egentligen inte..)");
-					});
-
+				conn.setUserContext("hej").done(function(response) {
+					console.warn("Vi fick svar", response);
+				});
 
 			})
 			.fail(function() {

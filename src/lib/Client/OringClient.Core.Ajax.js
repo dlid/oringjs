@@ -9,21 +9,34 @@
 var ajax = function(options, success, error) {
     var settings = _core.extend({
         method : "get",
-        url : null
+        url : null,
+        headers : {},
+        data : null
     }, options),
-	http = createXMLHttp();
+  	http = createXMLHttp();
 
-    http.open("get", settings.url, true);
-    http.send(null);
-    http.onreadystatechange = function() {
-    if (http.readyState === 4) {
-        if (http.status === 200) {
-            success.call(null, http.responseText);
-        } else {
-            error.call(null, http.responseText);
-        }
+    http.open(settings.method, settings.url, true);
+    var dataToSend = null,
+        headerKeys = getKeys(settings.headers);
+
+    for (i = 0; i < headerKeys.length; i+=1) {
+      http.setRequestHeader(headerKeys[i], settings.headers[headerKeys[i]]);
     }
-  };
+
+    if (settings.method.toLowerCase() == "post" ) {
+      dataToSend = settings.data;
+    }
+
+    http.send(dataToSend);
+    http.onreadystatechange = function() {
+      if (http.readyState === 4) {
+          if (http.status === 200) {
+              success.call(null, http.responseText);
+          } else {
+              error.call(null, http.responseText);
+          }
+      }
+    };
 },
 /**
  * Creates a xml http request

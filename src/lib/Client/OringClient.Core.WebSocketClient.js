@@ -11,7 +11,6 @@ function WebSocketClient() {
 	this.send = function(message) {
 		if (message.__proto__ == Request) {
 			if (_ws) {
-				console.warn("SEND", message);
 				_ws.send(message.toJSON());
 			}
 		} else {
@@ -19,7 +18,7 @@ function WebSocketClient() {
 		}
 	}
 
-	this.start = function(uri, hubs) {
+	this.start = function(uri, hubs, opt) {
 		var deferred = _core.Deferred();
 
 
@@ -41,7 +40,7 @@ function WebSocketClient() {
 
 		_ws = new WebSocket(url, "oringserver");
 		_ws.onopen = function(e) {
-			deferred.resolve();
+			deferred.resolve({});
 		}
 
 		_ws.onclose = function(e) {
@@ -60,7 +59,7 @@ function WebSocketClient() {
 
 		_ws.onmessage = function(msg) {
 			if (msg && msg.data) {
-				self.onmessage(msg.data);
+				self.onmessage(opt.parseMessage(msg.data));
 			}
 		}
 

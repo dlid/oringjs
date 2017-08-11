@@ -50,22 +50,32 @@ function OringClient(options) {
 				context = {},
 				methodName;
 
+            if (!methods) return null;
+
+            var name ;
 			for (i = 0; i < methods.length; i++) {
-				var name = methods[i].n;
-				if (name.indexOf('.') == -1) {
-					var methodName = methods[i].n,
-							hasResponse = methods[i].r;
-					context[methods[i].n] = function() {
-						var _i = null;
-						if (hasResponse) {_i = createInvocationId();}
-						return methodInvocationCallback('*', methodName,  _i, argumentsToArray(arguments));
-					}
-				}
+				name =  methods[i].n;
+				
+                if (name.indexOf('.') === -1) {
+                    methodName = name;
+                    hub = "*";
+                } else {
+                    var d = name.split('.');
+                    hub = d[0];
+                    methodName = d[1];
+                }
+
+				context[methodName] = function(hub, name, hasResponse) {
+                    return function() {
+                        console.warn("CALL", hub, name);
+                        var _i = null;
+                        if (hasResponse) {_i = createInvocationId();}
+                        return methodInvocationCallback(hub, name,  _i, argumentsToArray(arguments));
+                    }
+                }(hub, methodName, methods[i].r);
+				
 			}
-			console.warn("context", context);
-
 			return context;
-
 		}
 
 		return null;
@@ -97,6 +107,8 @@ function OringClient(options) {
 			}
 			ix = -1; c = null;
 
+            var _pendingRequests = {};
+
 			function tryNext() {
 				ix+=1;
 				if (ix < _preferredClients.length) {
@@ -106,12 +118,16 @@ function OringClient(options) {
 						console.warn("Connection was lost");
 					};
 					
-					c.start(_uri, settings.hubs)
-						.done(function() {
-							
-							c.onmessage = function(message) {
-								var m = parseMessage(message);
-								console.warn("MSG", m);
+					c.start(_uri, settings.hubs, {
+                        parseMessage : parseMessage
+                    })
+						.done(function(e) {
+							var initialMessage = null;
+                            if (e.message)
+                                initialMessage = e.message;
+
+							c.onmessage = function(m) {
+								
 								if (!handshakeComplete) {
 									if (m.getType() == "oring:handshake") {
 										handshakeComplete = true;
@@ -120,18 +136,21 @@ function OringClient(options) {
 
 											var msg = createMessage("oring:invoke", {hub : hub, name : methodName, args : arguments}, invocationId);
 
-											if (invocationId) {
-												console.warn("WOA! Listen for", "oring:response__" + invocationId);
-												setTimeout(function() {
-													invokeDeferred.resolve();
-												}, 2000);
-											}
+    											if (invocationId) {
 
-											c.send(msg);
+                                                    _pendingRequests["oring:response__" + invocationId] = {
+                                                        _created : (new Date()).getTime(),
+                                                        _def : invokeDeferred
+                                                    };
 
-											if (!invocationId) {
-												invokeDeferred.resolve();
-											}
+    												console.warn("WOA! Listen for", "oring:response__" + invocationId);
+                                                }
+
+    											c.send(msg);
+
+    											if (!invocationId) {
+    												invokeDeferred.resolve();
+    											}
 
 											return invokeDeferred.promise();
 										});
@@ -144,11 +163,17 @@ function OringClient(options) {
 										console.warn("Message received without handshake...", m);
 									}
 								} else {
-									console.warn("Ok, we're cool. Message is ", m);
+									console.warn("[incoming] ", m);
+                                    if (typeof _pendingRequests[m.getType()] != "undefined") {
+                                        _pendingRequests[m.getType()]._def.resolve(m.getData());
+                                        return;
+                                    }
 								}
 							};
-
-							console.warn("Alright, " + _preferredClients[ix].name + " succeeded");
+                            console.warn("Alright, " + _preferredClients[ix].name + " succeeded");
+                            if (initialMessage) {
+                                c.onmessage(initialMessage);
+                            }
 
 
 						})

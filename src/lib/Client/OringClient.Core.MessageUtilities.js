@@ -29,8 +29,10 @@ var Request = {
 	getData : function() {
 		return this.data;
 	},
+	getInvocationID : function() {
+		return this._i;
+	},
 	toJSON : function() {
-
 		return JSON.stringify({
 			_t : this.type,
 			_d : this.data,
@@ -50,7 +52,11 @@ var Request = {
 function parseMessage(msg) {
 	var o;
 
-	try { o = JSON.parse(msg) } catch(e) { o = null;}
+	if (typeof msg === "string") {
+		try { o = JSON.parse(msg) } catch(e) { o = null;}
+	} else if (typeof msg === "object") {
+		o = msg;
+	}
 	if (typeof o === "object") {
 		if (typeof o._d !== "undefined" && typeof o._t !== "undefined" && typeof o._w !== "undefined") {
 			var m = Object.create(ServerMessage, {

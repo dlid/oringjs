@@ -18,6 +18,10 @@ server.setShared('setUserContext', server.requestResponse(function() {
 
 }));
 
+server.setShared('broadcast', server.requestResponse(function() {
+
+}));
+
 server.createHub("scrapboard", {
 	'refreshBook' : server.requestResponse(function() {
 
