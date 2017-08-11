@@ -4,6 +4,7 @@
   "repository": "https://github.com/dlid/oringjs",
   "version": "0.0.1",
   "license": "MIT",
+  "main" : "index.js",
   "dependencies": {
     "ajax-request": "^1.2.3",
     "crypto": "0.0.3",
@@ -31,5 +32,8 @@
   "devDependencies": {
     "gulp-minify": "^1.0.0",
     "run-sequence": "^2.1.0"
-  }
+  },
+  "engines": {
+  "node": ">=4.2.4"
+}
 }

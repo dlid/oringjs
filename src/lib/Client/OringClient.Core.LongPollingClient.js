@@ -44,13 +44,13 @@ function LongPollingClient() {
 		console.warn("longPolling", url)
 		ajax({
 			url : url
-		}, function() {}, function() {
-			
+		}, function() {
+			deferred.resolve();
+		}, function() {
+			deferred.reject();
+
 		})
 
-		setTimeout(function() {
-			deferred.reject();
-		}, 1500);
 
 		return deferred.promise();
 

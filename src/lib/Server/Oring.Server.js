@@ -3,7 +3,8 @@ var extend  = require("extend"),
 		winston = require('winston'),
 		uuid = require('uuid'),
 		OringClientBase = require('./Oring.ClientBase.js'),
-    OringWebMethod = require('./Oring.Server.WebMethodBase.js');
+    OringWebMethod = require('./Oring.Server.WebMethodBase.js'),
+    serverUtilities = require('./Oring.Server.Utilities.js');
 
 var OringServer = function(protocolArray, options) {
 
@@ -13,7 +14,7 @@ var OringServer = function(protocolArray, options) {
 			_protocols = [],
 			_webServer, 
 			_logger = null,
-			_eventNames = ['connected'],
+			_eventNames = ['connected', 'webRequest'],
 			settings = extend({
 				port : 1234
 			}, options);
@@ -40,6 +41,7 @@ var OringServer = function(protocolArray, options) {
   			});
 
   		},
+      on : _self.on,
   		getMethodsForClient : function(client) {
   			var result = [];
   			console.log( JSON.stringify(_methods) );
@@ -100,26 +102,7 @@ var OringServer = function(protocolArray, options) {
 					groups : addToGroups
 				};
   		},
-  		getParametersFromURL : function(url) {
-				var i,
-					properties = {},
-					search,
-					d;
-
-  			if (url) {
-  				i = url.indexOf('?');
-  				if (i>-1) {
-  					search = url.substr(i+1).split('&');
-  					for( i=0; i < search.length; i+=1) {
-  						d = search[i].split('=');
-  						if (d.length == 2) {
-  							properties[d[0]] = decodeURIComponent(d[1]);
-  						}
-  					}
-  				}
-  			} 
-  			return properties;
-  		},
+  		getParametersFromURL : serverUtilities.parseQuerystring,
   		createLogger : createLogger,
   		getOptions : function(name, defaults) {
 		  	if (!name) return settings;
@@ -136,6 +119,39 @@ var OringServer = function(protocolArray, options) {
 		  	return JSON.stringify(msg);
 		  }
   	}
+  }
+
+
+  function triggerWebRequestEvent(request, response) {
+    console.warn("webrequests", _eventhandlers['webRequest'].length);
+    if (_eventhandlers['webRequest']) {
+          for (var i=0; i < _eventhandlers['webRequest'].length; i++) {
+            var cancelReason = null,
+                cancelled = false,
+                eventArgs = {
+                  request : request,
+                  response : response,
+                  cancel : function(reason) {
+                    cancelReason = reason;
+                    cancelled = true;
+                  }
+                };
+
+            _eventhandlers['webRequest'][i].call({
+              
+            }, eventArgs);
+
+            if (cancelled) {
+              return {
+                cancel : true,
+                reason : cancelReason
+              };
+            }
+          }
+        }
+        return {
+          cancel : false
+        };
   }
 
   function createLogger(name) {
@@ -251,11 +267,19 @@ var OringServer = function(protocolArray, options) {
 
 	this.start = function() {
 		_webServer = http.createServer(function (request, response) {
+
 	        _logger.info('HTTP Request Received ' + request.url)
-	        response.writeHead(200, {'Content-type': 'text/plain'});
-	        _logger.info('HTTP Request Received ' + request.url)
-	        response.write("Oring says hello.");
-	        response.end();
+	        
+          var e = triggerWebRequestEvent(request, response, null);
+
+          if (!e.cancel) {
+            response.writeHead(404, {
+              'Content-type': 'text/plain',
+              'Access-Control-Allow-Origin' : '*'});
+  	        _logger.info('HTTP Request Received ' + request.url)
+  	        response.write("[oring] Resource not found");
+  	        response.end();
+          }
 		});
 
 	  _webServer.listen(settings.port, function () {

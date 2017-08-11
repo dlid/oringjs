@@ -1,5 +1,4 @@
-var server = require("./src/index.js").createServer({
-});
+var server = require("./index.js").createServer();
 
 
 // A new user is connected
