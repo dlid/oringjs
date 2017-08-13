@@ -34,7 +34,7 @@ OutgoingMessageBase.__proto__.create = function(messageType, messageData, invoca
             value : invocationId ? invocationId : null
         },
         _w : {
-            value : new Date()
+            value : (new Date()).getTime()
         }
     });
 

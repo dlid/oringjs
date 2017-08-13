@@ -40,6 +40,109 @@
   	_invocationIds++;
   	return _invocationIds + "" + (new Date()).getTime();
   }
+
+
+  function parseUrl(url) {
+      var parser = document.createElement('a');
+      parser.href = url;
+      return {
+          schema : parser.protocol,
+          host : parser.hostname,
+          port : parser.port,
+          path : parser.pathname,
+          querystring : parseQuerystring(parser.search)
+      };
+  }
+
+  function logInfo() {
+      
+  }
+
+  function combineUrl(uri1, uri2) {
+      var uri = _core.extend({}, uri1, uri2);
+      if (uri1.schema && uri2.schema) {
+          if (isSecureProtocol(uri1.schema)) {
+              uri.schema = toSecureProtocol(uri.schema);
+          } else {
+              uri.schema = toUnsecureProtocol(uri.schema);
+          }
+      }
+
+      return uri;
+  }
+
+
+  function createUrl(uri) {
+      var url = "";
+      if (uri.schema)
+          url = uri.schema + "://";
+      if (uri.host)
+          url += uri.host;
+      if (uri.port)
+          url += ":" + uri.port;
+      if (uri.path)
+          url += uri.path;
+      if (uri.querystring) {
+          var keys = getKeys(uri.querystring),
+              qs = [];
+
+          for (var i=0; i < keys.length; i+=1) {
+              qs.push(encodeURIComponent(keys[i]) + "=" + encodeURIComponent(uri.querystring[keys[i]]));
+          }
+
+          if (qs.length > 0 ) url += "?" + qs.join('&');
+      }
+
+      return url;
+
+
+  }
+
+  function isSecureProtocol(str) {
+      return str == "https" || str == "wss";
+  }
+
+  function toSecureProtocol(str) {
+      if (isSecureProtocol(str))
+          return str;
+      else 
+          return str + "s";
+  }
+
+  function toUnsecureProtocol(str) {
+      if (isSecureProtocol(str))
+          return str.substr(0, str.length-1);
+      else 
+          return str;
+  }
+
+  function parseQuerystring(url) {
+      var i,
+      properties = {},
+      search,
+      d;
+
+      if (url) {
+          i = url.indexOf('?');
+          if (i>-1) {
+              search = url.substr(i+1).split('&');
+          } else {
+              search = url.split('&');
+          }
+          for( i=0; i < search.length; i+=1) {
+              d = search[i].split('=');
+              if (d.length == 2) {
+                  properties[d[0]] = decodeURIComponent(d[1]);
+              }
+          }
+          
+      } 
+      return properties;
+  }
+
+  window.parseQuerystring = parseQuerystring;
+  window.parseUrl = parseUrl;
+  window.combineUrl = combineUrl;
   (function(factory) {
     if(typeof exports === 'object') {
       factory(exports);
@@ -432,16 +535,24 @@
   }
 
 
-  function LongPollingClient() {
+  function LongPollingClient(name) {
 
   	var _ws,
   		self = this,
   		_connectionId,
   		_sendUrl,
-  		_opt;
+  		_opt,
+  		_pollTimer = null
 
+  	this.name = name;
   	this.onclose = null;
   	this.onmessage = null;
+  	this.stop = function() {
+  		if(_pollTimer) {
+  			console.warn("Stopping poll timer");
+  			clearTimeout(_pollTimer);
+  		}
+  	};
 
   	this.send = function(message) {
   		if (message.__proto__ == Request) {
@@ -458,7 +569,10 @@
   					data : message.toJSON()
   				}, 
   				function(responseBody) {
-  					self.onmessage(_opt.parseMessage(responseBody));
+  					var msg = _opt.parseMessage(responseBody);
+  					if (msg) {
+  						self.onmessage(msg);
+  					}
   				},
   				function(r) {
   					console.warn("FAILED",r);
@@ -467,48 +581,43 @@
   		} else {
   			logError("That's no request");
   		}
-  	}
+  	} 
 
   	this.start = function(uri, hubs, opt) {
   		_opt = opt;
-  		var deferred = _core.Deferred();
-  		var url = "";
-  		if (uri.schema == "https"|| uri.schema == "wss")
-  			url = "https://";
-  		else 
-  			url = "http://";
+  		var deferred = _core.Deferred(),
+  			qs = { '__oringprotocol' : 'longPolling' };
 
-  		url += uri.path;
+  		_sendUrl = createUrl(combineUrl(uri, {
+  			schema : "http",
+  			querystring : qs
+  		}));
 
-  		if (uri.port) url += ":" + uri.port;
-  		if (uri.querystring) url += "?" + uri.querystring;
-
-  		if (uri.querystring) url += "&"; else url +="?";
-  		url += "__oringprotocol=longPolling";
-  		_sendUrl = url;
-  		if (hubs && hubs.length > 0)  {
-  			if (uri.querystring) url += "&";
-  			url += "__oringhubs=" + encodeURIComponent(hubs.join(','));
+  		if (hubs && hubs.length > 0) {
+  			qs['__oringhubs'] = encodeURIComponent(hubs.join(','));
   		}
 
+  		url = createUrl(combineUrl(uri, {
+  			schema : "http",
+  			querystring : qs
+  		}));
+
+
   	
-
-
   		ajax({
   			url : url
   		}, function(r) {
   			// We pass the message immediatly since the onmessage is not hooked up until the connection is created
   			
   			// We need the connection id
-  			var message = _opt.parseMessage(r);
+  			var message = _opt.parseMessage(r),
+  				failedPollAttempts = 0;
   			if (message) {
   				if (message.data.id) {
   					_connectionId = message.data.id;
-  					deferred.resolve({
-  						message : message
-  					});
+  					
 
-  					setInterval(function() {
+  					function pollTick() {
   						ajax({
   							url : _sendUrl + "&ping",
   							headers : {
@@ -522,14 +631,42 @@
   								for (var i=0; i < o.length; i+=1) {
   									var m = _opt.parseMessage(o[i]);
   									if(m) {
+  										failedPollAttempts = 0;
   										self.onmessage(m);
   									}
   								}
+  								_pollTimer = setTimeout(pollTick, 10000);
   							}
-  						}, function() {
-  							console.warn("longPolling ping failed...");
+
+  							// We received something strange. A fail this is!
+  							if (failedPollAttempts >= 3) {
+  								if (typeof self.onclose == "function") {
+  									if (typeof self.onopen == "function") {
+  										logInfo("longPolling unexpected response (attempt "+failedPollAttempts+")");
+  										self.onopen();
+  									}
+  								}
+  							} else {
+  								failedPollAttempts+=1;
+  							}
+
+  						}, function(r) {
+  							if (failedPollAttempts >= 3) {
+  								if (typeof self.onclose == "function") {
+  									self.onclose(r);
+  								}
+  							} else {
+  								logInfo("longPolling failed (attempt "+failedPollAttempts+")");
+  								failedPollAttempts+=1;
+  							}
   						});
-  					}, 10000)
+  					}
+
+  					_pollTimer = setTimeout(pollTick, 10000);
+
+  					deferred.resolve({
+  						message : message
+  					});
 
   				}
   			} else {
@@ -652,17 +789,191 @@
   	return msg;
   }
   /**
+   * A message received from the server
+   */
+   var OringConnection = {
+     
+     // Client object (websocket / long polling etc)
+     c : null, 
+
+     // The id of the established connection
+     id : null,
+
+     // Requests that are waiting for response
+     _pr : {},
+
+     handshakeComplete : false,
+
+     await : function(name, object) {
+      this._pr[name] = object;
+     },
+
+     onmessage : function(msg) {
+      if (this.c)
+          this.c.onmessage(msg);
+     },
+
+     // Initialize
+     start : function(currentClient, handshakeCompleteCallback) {
+      var self = this,
+          pendingRequests = this._pr;
+      
+      this.c = currentClient;
+
+          currentClient.onclose = function() {
+              console.error(currentClient.name, "closed");
+          }
+
+          currentClient.onopen = function() {
+              console.error(currentClient.name, "opened");
+          }
+
+          currentClient.onmessage = function(m) {
+
+              if (!this.handshakeComplete) {
+                  if (m.getType() == "oring:handshake") {
+                      
+
+                      var connectionContext = Object.create(ConnectionContext);
+
+                      if (connectionContext.setupContext(m, self)) {
+                          this.handshakeComplete = true;
+                          connectionContext.oring = {
+                              transferProtocol : currentClient.name
+                          };
+                          console.warn("CONTEXT IS SETUP", connectionContext);
+                          handshakeCompleteCallback(connectionContext);
+                      }
+
+                  
+                  } else {
+                      console.warn("Message received without handshake...", m);
+                  }
+              } else {
+
+                   if (m.getType() == "oring:reacquaint") {
+                      console.error("WOA! SEND HANDSHAKE AGAIN!");
+                      currentClient.stop();
+                   } else if (typeof pendingRequests[m.getType()] != "undefined") {
+                      pendingRequests[m.getType()]._def.resolve(m.getData());
+                      return;
+                  } else if (m.getType() == "oring:event") {
+                      console.warn("EVENT RECEIVED", m.getData().name, m.getData().eventData);
+                  }
+              }
+          };
+      }
+  };
+
+  // The connection Context is the interface that can be used to invoke methods
+  // and listen to events
+  var ConnectionContext = {
+      
+      /**
+       * Listen for a serverside event
+       *
+       * @param      {<string>}  eventName         The event name
+       * @param      {<function>}  callbackFunction  The callback function
+       */
+      on : function(eventName, callbackFunction) {
+
+      },
+
+      /**
+       * Invoke a serverside method
+       *
+       * @param      {<type>}  hub           The hub
+       * @param      {<type>}  methodName    The method name
+       * @param      {string}  invocationId  The invocation identifier
+       * @param      {<type>}  arguments     The arguments
+       * @return     {<type>}  { description_of_the_return_value }
+       */
+      _invokeMethod : function(conn, hub, methodName, invocationId, arguments) {
+          var invokeDeferred = _core.Deferred(),
+              pendingRequests = this._pr;
+          var msg = createMessage("oring:invoke", {hub : hub, name : methodName, args : arguments}, invocationId);
+
+          if (invocationId) {
+              // Setup so we wait for a response
+              conn.await("oring:response__" + invocationId, {
+                  _created : (new Date()).getTime(),
+                  _def : invokeDeferred
+              });
+          }
+
+          conn.c.send(msg);
+
+          if (!invocationId) {
+              invokeDeferred.resolve();
+          }
+
+          return invokeDeferred.promise();
+      },
+
+      setupContext : function(handshakeMessage, conn) {
+          var invokeMethod = this._invokeMethod;
+          if (handshakeMessage.__proto__ == ServerMessage) {
+              var methods = handshakeMessage.getData().methods,
+                  i,
+                  context = {},
+                  methodName;
+
+              if (!methods) return true;
+
+              var name ;
+              for (i = 0; i < methods.length; i++) {
+                  name =  methods[i].n;
+                  
+                  if (name.indexOf('.') === -1) {
+                      methodName = name;
+                      hub = "*";
+                  } else {
+                      var d = name.split('.');
+                      hub = d[0];
+                      methodName = d[1];
+                  }
+
+                  var fn =function(hub, name, hasResponse) {
+                      return function() {
+                          console.warn("CALL", hub, name);
+                          var _i = null;
+                          if (hasResponse) {_i = createInvocationId();}
+                          return invokeMethod(conn, hub, name,  _i, argumentsToArray(arguments));
+                      }
+                      
+                  }(hub, methodName, methods[i].r);
+
+                  if(hub!= "*") {
+                      if (!this[hub]) this[hub] = {};
+                      this[hub][methodName] = fn;
+                  } else {
+                      this[methodName] = fn;
+                  }
+
+              }
+              return true;
+          }
+      }
+  };
+  /**
    * These are the public methods available inside the "Core" part of the script
    */
 
   var logPrefix = "[oring] ",
-  	  logError = function() {
-  	if (console && console.error) {
-  		var params = argumentsToArray(arguments);
-  		params.unshift(logPrefix)
-  		console.error.apply(console, params);
-  	}
-  }
+      logError = function() {
+      	if (console && console.error) {
+      		var params = argumentsToArray(arguments);
+      		params.unshift(logPrefix)
+      		console.error.apply(console, params);
+      	}
+      },
+      logInfo = function() {
+          if (console && console.log) {
+              var params = argumentsToArray(arguments);
+              params.unshift(logPrefix)
+              console.log.apply(console, params);
+          }
+      }
   /**
    * These are the public methods available inside the "Core" part of the script
    */
@@ -685,14 +996,20 @@
   }
 
 
-  function WebSocketClient() {
+  function WebSocketClient(name) {
 
   	var _ws,
   			self = this;
 
+  	this.name = name;
   	this.onclose = null;
   	this.onmessage = null;
-
+  	this.stop = function() {
+  		if (_ws) {
+  			console.warn("CLOSE WEBSOCKET");
+  			_ws.close();
+  		}
+  	}
   	this.send = function(message) {
   		if (message.__proto__ == Request) {
   			if (_ws) {
@@ -704,35 +1021,30 @@
   	}
 
   	this.start = function(uri, hubs, opt) {
-  		var deferred = _core.Deferred();
+  		var deferred = _core.Deferred(),
+  		qs = {};
 
-
-  		var url = "";
-  		if (uri.schema == "https"||uri.schema == "wss")
-  			url = "wss://";
-  		else 
-  			url = "ws://";
-
-  		url += uri.path;
-
-  		if (uri.port) url += ":" + uri.port;
-  		if (uri.querystring) url += "?" + uri.querystring;
-  		if (hubs && hubs.length > 0)  {
-  			if (uri.querystring) url += "&";
-  			url += "__oringhubs=" + encodeURIComponent(hubs.join(','));
+  		if (hubs && hubs.length > 0) {
+  			qs['__oringhubs'] = encodeURIComponent(hubs.join(','));
   		}
+
+  		url = createUrl(combineUrl(uri, {
+  			schema : "ws",
+  			querystring : qs
+  		}));
 
 
   		_ws = new WebSocket(url, "oringserver");
   		_ws.onopen = function(e) {
+  			if (typeof self.onopen == "function") {
+  				self.onopen();
+  			}
   			deferred.resolve({});
   		}
 
   		_ws.onclose = function(e) {
-  			logError("Connection closed",e);
-  			// Try a few times? Then let go and attempt again...
   			if (typeof self.onclose == "function") {
-  				self.onclose();
+  				self.onclose(e);
   			}
   		}
 
@@ -765,174 +1077,67 @@
   		url : null,
   		hubs : [],
   		transferProtocols : defaultClients
-  	}, options);
+  	}, options),
+  	_preferredClients  = [],
+  	ix,
+  	_protocolNotFound = false,
+  	_connection;
 
   	if (options.transferProtocols)
   		settings.transferProtocols = options.transferProtocols;
 
-  	console.warn("SETTINGS", settings);
-
-  	function parseUrl(url) {
-  		var i = url.indexOf('?'),
-  				querystring = null;
-  		if (i!=-1) {
-  			querystring = url.substring(i+1);
-  			url = url.substring(0, i);
-  		}
-
-  		var m = url.match(/((?:http|ws|)s?:\/\/|^)([^:]+?)(?::(\d+)|$)/);
-  		if (m) {
-  			var schema = m[1],
-  					path = m[2],
-  					port = m[3] ? m[3] : null;
-
-
-
-  			return {
-  				schema : schema ? schema.replace(/:\/\/$/, '') : "http",
-  				path : path,
-  				port : port,
-  				querystring : querystring
-  			};
-  		}
+  	for (ix = 0; ix < settings.transferProtocols.length; ix++) {
+  		_protocolNotFound = true;
+  		for (c = 0; c < _clients.length; c++) {
+  			if (settings.transferProtocols[ix] == _clients[c].name) {
+  				_preferredClients.push(_clients[c]);
+  				_protocolNotFound = false;
+  				break;
+  			}
+  			}
+  			if (_protocolNotFound) {
+  				logError("Unknown transferProtcol", settings.transferProtocols[ix]);
+  			}
   	}
 
+  	console.warn("SETTINGS", settings);
 
   	var _uri = parseUrl(options.url);
 
-  	function handleHandshake(handshakeMessage, methodInvocationCallback) {
-
-  		if (handshakeMessage.__proto__ == ServerMessage) {
-  			var methods = handshakeMessage.getData().methods,
-  				i,
-  				context = {},
-  				methodName;
-
-              if (!methods) return null;
-
-              var name ;
-  			for (i = 0; i < methods.length; i++) {
-  				name =  methods[i].n;
-  				
-                  if (name.indexOf('.') === -1) {
-                      methodName = name;
-                      hub = "*";
-                  } else {
-                      var d = name.split('.');
-                      hub = d[0];
-                      methodName = d[1];
-                  }
-
-  				context[methodName] = function(hub, name, hasResponse) {
-                      return function() {
-                          console.warn("CALL", hub, name);
-                          var _i = null;
-                          if (hasResponse) {_i = createInvocationId();}
-                          return methodInvocationCallback(hub, name,  _i, argumentsToArray(arguments));
-                      }
-                  }(hub, methodName, methods[i].r);
-  				
-  			}
-  			return context;
-  		}
-
-  		return null;
-
-  	}
-
-
-  	this.start = function() {
+  	// Loop through the protocols and connect to the first one possible
+  	function connect() {
   			var deferred = _core.Deferred();
 
   			var c = null,
-  					ix = -1,
-  					handshakeComplete = false,
-  					_preferredClients  = [],
-  					_protocolNotFound = false;
-
-  			for (ix = 0; ix < settings.transferProtocols.length; ix++) {
-  				_protocolNotFound = true;
-  				for (c = 0; c < _clients.length; c++) {
-  					if (settings.transferProtocols[ix] == _clients[c].name) {
-  						_preferredClients.push(_clients[c]);
-  						_protocolNotFound = false;
-  						break;
-  					}
-   				}
-   				if (_protocolNotFound) {
-   					logError("Unknown transferProtcol", settings.transferProtocols[ix]);
-   				}
-  			}
-  			ix = -1; c = null;
-
-              var _pendingRequests = {};
+  				ix = -1,
+  				handshakeComplete = false;
 
   			function tryNext() {
   				ix+=1;
   				if (ix < _preferredClients.length) {
 
-  					c = new _preferredClients[ix].class();
+  					c = new _preferredClients[ix].class(_preferredClients[ix].name);
   					c.onclose = function() {
-  						console.warn("Connection was lost");
+  						console.error("Connection was lost!!!! NOOOO!");
   					};
   					
-  					c.start(_uri, settings.hubs, {
-                          parseMessage : parseMessage
-                      })
+  					c.start(_uri, settings.hubs, {parseMessage : parseMessage})
   						.done(function(e) {
-  							var initialMessage = null;
-                              if (e.message)
-                                  initialMessage = e.message;
 
-  							c.onmessage = function(m) {
-  								
-  								if (!handshakeComplete) {
-  									if (m.getType() == "oring:handshake") {
-  										handshakeComplete = true;
-  										var h = handleHandshake(m, function(hub, methodName, invocationId, arguments) {
-  											var invokeDeferred = _core.Deferred();
+  							if (_connection) {
+  								console.warn("[OOAOAAO] An existing connection exists! MÖÖÖRGE!");
+  							}
 
-  											var msg = createMessage("oring:invoke", {hub : hub, name : methodName, args : arguments}, invocationId);
+  							/// Connection successful.
+  							/// Hand over the connection lifecycle to a new OringConnection
+  							_connection = Object.create(OringConnection);
+  							_connection.start(c, function(context) {
+  								deferred.resolve(context);
+  							});	
 
-      											if (invocationId) {
-
-                                                      _pendingRequests["oring:response__" + invocationId] = {
-                                                          _created : (new Date()).getTime(),
-                                                          _def : invokeDeferred
-                                                      };
-
-      												console.warn("WOA! Listen for", "oring:response__" + invocationId);
-                                                  }
-
-      											c.send(msg);
-
-      											if (!invocationId) {
-      												invokeDeferred.resolve();
-      											}
-
-  											return invokeDeferred.promise();
-  										});
-  										if (h) {
-  											h.transferProtocol = _preferredClients[ix].name;
-  											deferred.resolve(h);
-  										}
-  										console.warn("handskahe complete");
-  									} else {
-  										console.warn("Message received without handshake...", m);
-  									}
-  								} else {
-  									console.warn("[incoming] ", m);
-                                      if (typeof _pendingRequests[m.getType()] != "undefined") {
-                                          _pendingRequests[m.getType()]._def.resolve(m.getData());
-                                          return;
-                                      }
-  								}
-  							};
-                              console.warn("Alright, " + _preferredClients[ix].name + " succeeded");
-                              if (initialMessage) {
-                                  c.onmessage(initialMessage);
-                              }
-
+  							if (e.message) {
+  								_connection.onmessage(e.message);
+  							}
 
   						})
   						.fail(function() {
@@ -951,6 +1156,10 @@
   			return deferred.promise();
   	}
 
+
+  	this.start = function() {
+  		return connect();
+  	}
 
 
   	if (!options.url) {

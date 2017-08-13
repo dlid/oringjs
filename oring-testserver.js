@@ -18,9 +18,19 @@ server.setShared('setUserContext', server.requestResponse(function() {
 
 }));
 
-server.setShared('broadcast', server.requestResponse(function() {
+server.setShared('broadcast', server.requestResponse(function(message) {
+	var resolve = this.resolve,
+		reject = this.reject;
+	
+	console.warn("BROADCAST MESSAGE! ", message, " processing...");
 
-}));
+	this.send(null, "onChatMessage", {message : message, user : "Unknown"});
+
+	setTimeout(function() {
+		resolve("Your message was sent to 500 people");
+	}, 13000);
+
+}, true));
 
 server.createHub("scrapboard", {
 	'refreshBook' : server.requestResponse(function() {

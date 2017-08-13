@@ -1,13 +1,19 @@
 
 
-function WebSocketClient() {
+function WebSocketClient(name) {
 
 	var _ws,
 			self = this;
 
+	this.name = name;
 	this.onclose = null;
 	this.onmessage = null;
-
+	this.stop = function() {
+		if (_ws) {
+			console.warn("CLOSE WEBSOCKET");
+			_ws.close();
+		}
+	}
 	this.send = function(message) {
 		if (message.__proto__ == Request) {
 			if (_ws) {
@@ -19,35 +25,30 @@ function WebSocketClient() {
 	}
 
 	this.start = function(uri, hubs, opt) {
-		var deferred = _core.Deferred();
+		var deferred = _core.Deferred(),
+		qs = {};
 
-
-		var url = "";
-		if (uri.schema == "https"||uri.schema == "wss")
-			url = "wss://";
-		else 
-			url = "ws://";
-
-		url += uri.path;
-
-		if (uri.port) url += ":" + uri.port;
-		if (uri.querystring) url += "?" + uri.querystring;
-		if (hubs && hubs.length > 0)  {
-			if (uri.querystring) url += "&";
-			url += "__oringhubs=" + encodeURIComponent(hubs.join(','));
+		if (hubs && hubs.length > 0) {
+			qs['__oringhubs'] = encodeURIComponent(hubs.join(','));
 		}
+
+		url = createUrl(combineUrl(uri, {
+			schema : "ws",
+			querystring : qs
+		}));
 
 
 		_ws = new WebSocket(url, "oringserver");
 		_ws.onopen = function(e) {
+			if (typeof self.onopen == "function") {
+				self.onopen();
+			}
 			deferred.resolve({});
 		}
 
 		_ws.onclose = function(e) {
-			logError("Connection closed",e);
-			// Try a few times? Then let go and attempt again...
 			if (typeof self.onclose == "function") {
-				self.onclose();
+				self.onclose(e);
 			}
 		}
 

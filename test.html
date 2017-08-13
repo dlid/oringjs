@@ -4,29 +4,90 @@
 		<script src="build/oring.js"></script>
 	</head>
 	<body>
-		<div id="log"></div>
+
+        <div style="background-color: #eee; padding:10px;">
+            <span id="status-light" style="margin-right: 10px;display: inline-block;width: 16px; height: 16px; border-radius: 8px; box-shadow: #414141 2px 2px 5px; background-color: red;"></span>
+            <span id="status-text">Not connected</span>
+            
+        </div>
+
+    <fieldset id="connect">
+        <legend>Connect using...</legend>
+        <button class="connect" type="button" data-protocol="longPolling">Long polling</button>
+        <button class="connect" type="button" data-protocol="webSocket,longPolling">Websocket, Long polling</button>
+
+    </fieldset>		
+    
+            <hr />
+    <fieldset id="message" style="display: none;">
+        <input type="text" size="40" id="bcast"  />
+    </fieldset>
+        
+    
+            
+        <div id="log"></div>
+
+
+
 	<script>
 
 	function log(text) {document.getElementById('log').innerHTML += text + "<br>";}
 
-			var oringClient = oring.create("http://localhost:1234?hej=3", {
-				transferProtocols : ['webSocket', 'longPolling'],
-				hubs : ['scrapbook', 'user']
-			});
 
-			oringClient.start().done(function(conn) {
-				 log("Connected using '"+conn.transferProtocol+"'");
+        var buttons = document.querySelectorAll('.connect');
+        for(var i=0; i < buttons.length; i+=1) {
+            buttons[i].onclick = function(e) {
+                document.getElementById('connect').style.display = 'none';
+                connect(e.target.getAttribute('data-protocol'));
+            };
+        }
 
-				conn.setUserContext("hej").done(function(response) {
-					console.warn("Vi fick svar", response);
-				});
 
-			})
-			.fail(function() {
-				log("<span style='color:red'>Could not connect to server. Remember to start it!</span>");
-			});
+        function connect(protocols) {
+            log('Attempt to connect using ' + protocols);
+
+            var oringClient = oring.create("http://localhost:1234?hej=3", {
+                transferProtocols : protocols.split(','),
+                hubs : ['scrapbook', 'user']
+            });
+
+            oringClient.start().done(function(conn) {
+                 document.getElementById('status-light').style.backgroundColor = 'green';
+                 document.getElementById('status-text').innerHTML = 'Connected using <strong>' + conn.oring.transferProtocol + "</strong>";
+
+                conn.on('onChatMessage', function(e) {
+                    console.warn("RECEIVED onChatMessage EVENT", e);
+                });
+
+             
+
+                document.getElementById('message').style.display = 'block';
+                var bcast = document.getElementById('bcast');
+                bcast.removeAttribute('disabled');
+                bcast.onkeydown = function(e) {
+                    if (e.keyCode == 13) {
+
+                        conn.broadcast(bcast.value).done(function(response) {
+                            console.warn("Vi fick svar", response);
+                        });
+                        bcast.value = "";
+                    }
+                }
+
+
+            })
+            .fail(function() {
+                log("<span style='color:red'>Could not connect to server. Remember to start it!</span>");
+            });
+
+        }
+
+
+			
 
 		</script>
 	</body>
+
+
 
 </html>

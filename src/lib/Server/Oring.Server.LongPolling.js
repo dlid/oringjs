@@ -36,9 +36,11 @@ var create = function() {
 
 								var client = oringServer.createConnection({
 									send : function(msg) {
+										var id = this.getConnectionId();
 											if (msg.__proto__ == OutgoingMessageBase) {
-												if (!_messageQueue[this.getConnectionId()]) _messageQueue[this.getConnectionId()] = [];
-												_messageQueue[this.getConnectionId()].push({
+												console.warn(id + " longpolling send " + msg.toJSON());
+												if (!_messageQueue[id]) _messageQueue[id] = [];
+												_messageQueue[id].push({
 													d : (new Date()).getTime(),
 													m : msg.toJSON()
 												});
@@ -50,22 +52,23 @@ var create = function() {
 
 
 								oringServer.addConnection(client);
-								_clientSeen[client.getConnectionId()] = new Date();
+								console.log("  >ping client " + client.getConnectionId() + " longpolling.webrequest");
+								client.seen(new Date());
 
 								function checkIfSeen(c) {
-									var now = new Date();
-									if (_clientSeen[c.getConnectionId()] ) {
-										var diff = now.getTime() - _clientSeen[c.getConnectionId()].getTime();
-										console.warn("diff", diff);
-										if (diff > 10000) {
+									var now = new Date(),
+										seen = c.seen();
+									if (seen) {
+										var diff = now.getTime() - seen.getTime();
+										console.warn(c.getConnectionId() + " diff", diff);
+										if (diff > 20000) {
 											console.log("Connection timed out" );
 											oringServer.lostConnection(c);
-											delete _clientSeen[c.getConnectionId()];
 											return;
 										}
 										setTimeout(function() {checkIfSeen(c);}, 5000);
 									} else {
-										console.warn("No " + c.getConnectionId());
+										console.warn("Could not get __seen value");
 									}
 								}
 
@@ -85,82 +88,47 @@ var create = function() {
 
 							} else if (e.request.method.toLowerCase() == "get" && e.request.headers["x-oring-request"]) {
 								// Polling
-								e.cancel();
-								var messageJson = "";
-								var connectionID = e.request.headers["x-oring-request"];
-								_clientSeen[connectionID] = new Date();
-
-								if (_messageQueue[connectionID]) {
-									var _itemsToSend = _messageQueue[connectionID].slice();
-									_messageQueue[connectionID] = [];
-									for (var i=0; i < _itemsToSend.length; i++) {
-										if (messageJson.length > 0) messageJson += ",";
-										messageJson+=_itemsToSend[i].m;
-									}
-								}
-								e.response.setHeader('Access-Control-Allow-Origin', '*');
-								e.response.setHeader('Content-Type', 'application/json');
-								e.response.writeHead(200);
-				  	        	e.response.write("["+messageJson+"]");
-				  	        	e.response.end();
-							} else if (e.request.method.toLowerCase() == "post" && e.request.headers["x-oring-request"]) {
-								e.cancel();
-								_clientSeen[e.request.headers["x-oring-request"]] = new Date();
-								var body = '';
-						        e.request.on('data', function (data) {
-						            body += data;
-						            // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
-						            if (body.length > 1e6) { 
-						                // FLOOD ATTACK OR FAULTY CLIENT, NUKE REQUEST
-						                e.request.connection.destroy();
-						            }
-						        });
-						        e.request.on('end', function () {
-						            // use POST
-						            
-						            var msg = oringServer.parseIncomingMessage(body);
-						            if (msg) {
-							            oringServer.messageReceived(msg)
-							            	.done(function(responseMessage) {
-									          	console.warn("RESPONSE:" + responseMessage);
-												e.response.setHeader('Access-Control-Allow-Origin', '*');
-												e.response.setHeader('Content-Type', 'application/json');
-												e.response.writeHead(200);
-								  	        	e.response.write(responseMessage.toJSON());
-								  	        	e.response.end();
-							            	})
-							            	.fail(function() {
-							            		e.response.writeHead(500, {
-									              'Content-Type': 'application/json',
-									              'Access-Control-Allow-Origin' : '*'
-									          	});
-								  	        	e.response.write(JSON.stringify({
-								  	        		status: "error",
-								  	        		message: "An error occured processing the message"
-								  	        	}));
-								  	        	e.response.end();
-							            	});
-					 					
-						  	        } else {
-						  	        	e.response.writeHead(500, {
-							              'Content-type': 'application/json',
-									              'Access-Control-Allow-Origin' : '*'
-							          	});
-						  	        	e.response.write(JSON.stringify({
-						  	        		status: "error",
-						  	        		message: "Bad request"
-						  	        	}));
-						  	        	e.response.end();
-						  	        }
-
-						        });
-
 								
+								var client = oringServer.getConnectionById(e.request.headers["x-oring-request"]);
+								
+								if (client) {
+									e.cancel();	
+									client.seen(new Date());
+									console.log("  >ping client " + client.getConnectionId() + " longpolling.get latest");
+									var messageJson = "",
+										connectionID = client.getConnectionId();
+
+									if (_messageQueue[connectionID]) {
+										var _itemsToSend = _messageQueue[connectionID].slice();
+										_messageQueue[connectionID] = [];
+										for (var i=0; i < _itemsToSend.length; i++) {
+											if (messageJson.length > 0) messageJson += ",";
+											messageJson+=_itemsToSend[i].m;
+										}
+									}
+									e.response.setHeader('Access-Control-Allow-Origin', '*');
+									e.response.setHeader('Content-Type', 'application/json');
+									e.response.writeHead(200);
+					  	        	e.response.write("["+messageJson+"]");
+					  	        	e.response.end();
+								} else {
+									e.cancel();	
+
+									/// Server does not have the client specified. Tell client to shake hands
+									var message = oringServer.createMessage("oring:reacquaint");
+				 					e.response.writeHead(200, {
+						              'Content-type': 'application/json',
+						              'Access-Control-Allow-Origin' : '*'
+						          	});
+					  	        	e.response.write(message.toJSON());
+					  	        	e.response.end();
+									e.cancel();
+								}
 								
 							}
 						}
 					});
-
+					return true;
 				}
 			},
 			send : {

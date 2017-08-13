@@ -19,6 +19,28 @@ module.exports = {
             }
         } 
         return properties;
+    },
+
+    readRequestBody : function(request, readyCallback) {
+        var body = '';
+        request.on('data', function (data) {
+            body += data;
+            if (body.length > 1e6) { 
+                request.connection.destroy();
+                readyCallback(null);
+            }
+        });
+        request.on('end', function () {
+            readyCallback(body);          
+        });
+    },
+    createHttpResponse : function(response, code, headers, content) {
+        response.writeHead(code, {
+          'Content-type': 'application/json',
+          'Access-Control-Allow-Origin' : '*'
+        });
+        response.write(content);
+        response.end();
     }
 
 };

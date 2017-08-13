@@ -39,10 +39,11 @@ var create = function() {
 								
 								var client = oringServer.createConnection({
 									send : function(msg) {
+										var id = this.getConnectionId();
 										if (conn) {
 											if (msg.__proto__ == OutgoingMessageBase) {
 												var str = msg.toJSON();
-												console.warn("SEND " + str);
+												console.warn(id + " ws.send " + str);
 												conn.send(str);
 											}
 										}
@@ -70,10 +71,12 @@ var create = function() {
 										if (e.type == 'utf8') {
 											var msg = oringServer.parseIncomingMessage(e.utf8Data);
 											if(msg) {
-												oringServer.messageReceived(msg)
+												oringServer.messageReceived(client.getConnectionId(), msg)
 								            	.done(function(responseMessage) {
-								            		console.log("responseMessage", responseMessage);
-										          	client.send(responseMessage);
+								            		if (responseMessage) {
+									            		console.log("responseMessage", responseMessage);
+											          	client.send(responseMessage);
+											         }
 								            	})
 								            	.fail(function() {
 								            		console.warn("FAIL");
