@@ -8,15 +8,26 @@
         <div style="background-color: #eee; padding:10px;">
             <span id="status-light" style="margin-right: 10px;display: inline-block;width: 16px; height: 16px; border-radius: 8px; box-shadow: #414141 2px 2px 5px; background-color: red;"></span>
             <span id="status-text">Not connected</span>
-            
+
             
         </div>
 
     <fieldset id="connect">
         <legend>Connect using...</legend>
+        <input type="text" value="http://localhost:1234" />
+        <label><input type="checkbox" class="protocol" checked value="webSocket" /> webSocket</label>
+        <label><input type="checkbox" class="protocol" checked value="sse" /> sse</label>
+        <label><input type="checkbox" class="protocol" checked value="longPolling" /> longPolling</label>
+        
+        <br />
+        <button class="connect">Start</button>
+<!--<hr />
         <button class="connect" type="button" data-protocol="longPolling">Long polling</button>
+        <button class="connect" type="button" data-protocol="serverSendEvents">SeverSendEvents</button>
+        <button class="connect" type="button" data-protocol="websocket">webSocket</button><br />
         <button class="connect" type="button" data-protocol="webSocket,longPolling">Websocket, Long polling</button>
-
+        <button class="connect" type="button" data-protocol="webSocket,serverSendEvents,longPolling">Websocket, ServerSendEvents, Long polling</button>
+-->
     </fieldset>		
     
             <hr />
@@ -40,13 +51,18 @@
 	function log(text) {document.getElementById('log').innerHTML += text + "<br>";}
 
 
-        var buttons = document.querySelectorAll('.connect');
-        for(var i=0; i < buttons.length; i+=1) {
-            buttons[i].onclick = function(e) {
-                document.getElementById('connect').style.display = 'none';
-                connect(e.target.getAttribute('data-protocol'));
+        var button = document.querySelector('.connect');
+            button.onclick = function(e) {
+                var protocols = [];
+                var cbx = document.querySelectorAll('input.protocol');
+                for (var i=0; i < cbx.length; i++) {
+                    protocols.push(cbx[i].getAttribute('value'));
+                }
+                
+
+                //document.getElementById('connect').style.display = 'none';
+                connect(protocols.join(','));
             };
-        }
 
 
         function connect(protocols) {

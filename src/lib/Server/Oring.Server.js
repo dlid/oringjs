@@ -56,7 +56,7 @@ var OringServer = function(protocolArray, options) {
     Hubs : {
       get : function(name) {},
       getNames : function() {},
-      getConnections : function() {}
+      getConnections : function(hubName) {}
     },
     
     Connections : {
@@ -166,11 +166,13 @@ var OringServer = function(protocolArray, options) {
                   if (!_methods[hub][method].isLongRunning()) {
                     deferred.resolve(OutgoingMessageBase.create("oring:response__" + incomingMessage.getInvocationID(), result));
                   } else {
-                    console.warn("This is long running though");
                     var c = getConnectionById(connectionID);
-                    if (c) {
-                      c.send(OutgoingMessageBase.create("oring:response__" + incomingMessage.getInvocationID(), result));
-                    }
+
+                    _connectionManager.getById(connectionID).done(function(c) {
+                        console.warn("Send long running response to " + connectionID);
+                        c.send(OutgoingMessageBase.create("oring:response__" + incomingMessage.getInvocationID(), result));
+                    });
+
                   }
                 }).fail(function() {
                   console.warn("Hm, rejected yeah? " + connectionID);
@@ -201,16 +203,16 @@ var OringServer = function(protocolArray, options) {
               console.log(" ");
               console.log(" ");
               console.log(" ");
-            }
 
-
-            if (_methods[hub][method].isLongRunning() || !_methods[hub][method].hasResponse()) {
-              console.warn("LONG RUNNING or NO RESPONSE - resolve at once");
-              // For long polling this will return a response immediatly and the response
-              // will be sent later via the polling
-              console.log( deferred.isResolved() ? "already resolved" : "not resolved" );
-              deferred.resolve(OutgoingMessageBase.create("oring:noop"));
+               if (_methods[hub][method].isLongRunning() || !_methods[hub][method].hasResponse()) {
+                console.warn("LONG RUNNING or NO RESPONSE - resolve at once");
+                // For long polling this will return a response immediatly and the response
+                // will be sent later via the polling
+                console.log( deferred.isResolved() ? "already resolved" : "not resolved" );
+                deferred.resolve(null);
+              }
             }
+           
 
         }
 

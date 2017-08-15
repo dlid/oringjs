@@ -7,6 +7,14 @@ Nodejs server and client side script for client/server communications.
 
 OringJS currently support WebSocket, EventSource and Long Polling connections.
 
+# Introduction
+
+I've had multiple projects where I've needed to setup a websocket server, and every time I'v been thinking to create a re-usable library for it.
+
+OringJS is intended to be a nodejs server that is quick to setup and easy to use.
+
+Although my main focus was the websocket part, I decided to implement eventsource and long polling since I was building the library anyway.
+
 # Basic Setup
 
     npm install oringjs
