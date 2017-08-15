@@ -19,8 +19,12 @@
         <label><input type="checkbox" class="protocol" checked value="sse" /> sse</label>
         <label><input type="checkbox" class="protocol" checked value="longPolling" /> longPolling</label>
         
-        <br />
-        <button class="connect">Start</button>
+        <br /> <br />
+
+        Chat nickname: <input type="text" id="alias" value="Unknown" />
+<br /><br />
+                <button class="connect">Start</button><br /><br />
+
 <!--<hr />
         <button class="connect" type="button" data-protocol="longPolling">Long polling</button>
         <button class="connect" type="button" data-protocol="serverSendEvents">SeverSendEvents</button>
@@ -40,7 +44,7 @@
         <input type="text" size="40" id="bcast"  />
     </fieldset>
         
-    
+        <h1 style="float:right;" id="connectionCount">0</h1>
             
         <div id="log"></div>
 
@@ -56,7 +60,8 @@
                 var protocols = [];
                 var cbx = document.querySelectorAll('input.protocol');
                 for (var i=0; i < cbx.length; i++) {
-                    protocols.push(cbx[i].getAttribute('value'));
+                    if (cbx[i].checked)
+                        protocols.push(cbx[i].getAttribute('value'));
                 }
                 
 
@@ -79,9 +84,19 @@
 
                 conn.on('onChatMessage', function(e) {
 
-                    document.getElementById('chat').innerHTML += '<p>' + e.message + '</p>';
+                    document.getElementById('chat').innerHTML += '<p>' + e.user + ': ' + e.message + '</p>';
 
                     console.warn("RECEIVED onChatMessage EVENT", e);
+                });
+
+                conn.on('connections', function(e) {
+                    document.getElementById('connectionCount').innerText = e.count;
+                    console.warn("RECEIVED connections EVENT", e);
+                });
+
+                
+                conn.setAlias(document.getElementById('alias').value).done(function() {
+
                 });
 
 
@@ -92,7 +107,11 @@
                     if (e.keyCode == 13) {
 
                         conn.broadcast(bcast.value).done(function(response) {
-                            console.warn("Vi fick svar", response);
+                            if(response && response.message && response.user) {
+                               //  document.getElementById('chat').innerHTML += '<p>' + response.user + ': ' + response.message + '</p>';
+
+                            }
+                            console.warn("[broadcastresponse]", response);
                         });
                         bcast.value = "";
                     }

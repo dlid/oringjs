@@ -48,7 +48,7 @@ module.exports = {
                         result.push({success : true, result : r});
                         invoke();
                     })
-                    .fail(function() {
+                    .fail(function(r) {
                         console.log("FAILED " + ix);
                         result.push({success : false, result : r});
                         d.reject(result);
@@ -57,13 +57,10 @@ module.exports = {
                     arrayOfMethods[ix].call(context, eventArgs);                        
                     
                 } else {
+                    console.log("resolve");
                     d.resolve(result);
                 }
             };
-
-        console.log("");
-        console.log("");
-        console.log(" about to invoke " + arrayOfMethods.length + " deferred methods");
 
         invoke();
         return d.promise();

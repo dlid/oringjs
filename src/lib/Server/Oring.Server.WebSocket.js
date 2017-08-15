@@ -31,9 +31,9 @@ var create = function() {
 						});
 
 						this._ws.on('request', function(request) {
-
+							console.warn("connection requested", request.requestedProtocols);
 							var conn = null;
-
+							_log.info("Connection request", request.requestedProtocols);
 							if (request.requestedProtocols.indexOf(options.protocolName) !== -1) {
 								_log.info("Connection request", request.requestedProtocols);
 								
@@ -50,44 +50,60 @@ var create = function() {
 									}
 								}),
 								parameters = oringServer.getParametersFromURL(request.resource);
+								console.warn("connection requested", client.getConnectionId());
+								//_log.info(client.id);
 
-								_log.info(client.id);
-
-								var eventResult = oringServer.triggerConnectedEvent(client, parameters)
+								console.log("triggerConnectingEvent websocket");
+								var eventResult = oringServer.triggerConnectingEvent(client, parameters)
 									.done(function() {
 										conn = request.accept(options.protocolName, request.origin);
 
-										oringServer.addConnection(client);
+										oringServer.addConnection(client)
+											.done(function() {
 
-										var handshakeResponse = oringServer.createMessage("oring:handshake", 
-											{ id : client.getConnectionId(), methods : oringServer.getMethodsForClient(client)} );
+												oringServer.triggerConnectedEvent(client);
+												var handshakeResponse = oringServer.createMessage("oring:handshake", 
+													{ id : client.getConnectionId(), methods : oringServer.getMethodsForClient(client)} );
 
-										client.send(handshakeResponse);
+												client.send(handshakeResponse);
 
-										conn.on('close', function() {
-											oringServer.lostConnection(client);
-										});
+												conn.on('close', function() {
+													oringServer.lostConnection(client.getConnectionId()).done(function() {
+														oringServer.triggerDisconnectedEvent(client);
+													});
 
-										conn.on('message', function(e) {
-											if (e.type == 'utf8') {
-												var msg = oringServer.parseIncomingMessage(e.utf8Data);
-												if(msg) {
-													oringServer.messageReceived(client.getConnectionId(), msg)
-									            	.done(function(responseMessage) {
-									            		if (responseMessage) {
-										            		console.log("responseMessage", responseMessage);
-												          	client.send(responseMessage);
-												         }
-									            	})
-									            	.fail(function() {
-									            		console.warn("FAIL");
-									            	});
-												}
-											}
-										});
+												});
+
+												conn.on('message', function(e) {
+													if (e.type == 'utf8') {
+														var msg = oringServer.parseIncomingMessage(e.utf8Data);
+														if(msg) {
+															oringServer.messageReceived(client.getConnectionId(), msg)
+											            	.done(function(responseMessage) {
+											            		if (responseMessage) {
+												            		console.log("responseMessage", responseMessage);
+														          	client.send(responseMessage);
+														         }
+											            	})
+											            	.fail(function() {
+											            		console.warn("FAIL");
+											            	});
+														}
+													}
+												});
+
+											})
+											.fail(function() {
+												var handshakeResponse = oringServer.createMessage("oring:connection-failed");
+												client.send(handshakeResponse);
+												conn.close();
+											});
+										
 									})
 									.fail(function() {
-										request.reject(403, eventResult.reason);
+										console.log("kom hit iaf");
+										var handshakeResponse = oringServer.createMessage("oring:connection-rejected");
+										request.reject(403, "nej");
 									});
 								} else {
 									request.reject(403, "Bad protocol for oringserver");

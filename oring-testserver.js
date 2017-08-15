@@ -4,45 +4,53 @@ var server = require("./index.js").createServer({
 
 
 // A new user is connected
-server.on('connected', function(eventArgs) {
-	var resolve = this.resolve,
-		reject = this.reject,
-		send = this.send;
+server.on('connecting', function(eventArgs) {
+	this.resolve();
+});
 
-	console.log("A user connected", JSON.stringify(eventArgs));
-	this.Connections.getAll().done(function(r) {
-		resolve();
-		send(null, "connectionCount", r.length);
+server.on('connected', function(connectionId) {
+	sendUpdatedUserlist(this);
+});
+
+server.on('disconnected', function(connectionId) {
+	sendUpdatedUserlist(this);
+});
+
+server.setShared('setAlias', function(name) {
+	var context = this;
+
+	this.Connections.getById(this.getConnectionId()).done(function(c) {
+		c.setProperty('alias', name);
+		sendUpdatedUserlist(context);
 	});
 
 });
 
-server.setShared('setUserContext', server.requestResponse(function() {
+function sendUpdatedUserlist(context) {
+	context.Connections.getAll().done(function(connections) {
+		var users = []
+		for (var i=0; i < connections.length; i++)
+			users.push({id : connections[i].getConnectionId(), alias : connections[i].getProperty('alias', 'Unknown')});
+		context.send(null, 'connections', { count : connections.length, users : users });
+	});
+}
+
+server.setShared('broadcast', server.requestResponse(function(message) {
+	var resolve = this.resolve,
+		reject = this.reject,
+		send = this.send;
+	
+	this.Connections.getById(this.getConnectionId())
+		.done(function(c) {
+			send(null, "onChatMessage", {message : message, user : c.getProperty('alias', 'Unknown')});
+			resolve({message : message, user : c.getProperty('alias', 'Unknown')});
+		});
 
 }));
 
-/**
- * Long running operation
- * For time consuming operations, define them as long running - requestResponse(<callback>, true)
- * - for websockets this does not matter much
- * - for SSE and LongPolling the POST message will immediatly return a response instead of waiting for the result
- *   The result will then instead be sent via the polling/sse events
- */
-server.setShared('broadcast', server.requestResponse(function(message) {
-	var resolve = this.resolve,
-		reject = this.reject;
-	
+server.start();
 
-	// send a chat message to everyone
-	this.send(null, "onChatMessage", {message : message, user : "Unknown"});
-
-	setTimeout(function() {
-		// After 15 seconds, return the result of this method
-		resolve("Your message was sent to 500 people");
-	}, 15000);
-
-}, true));
-
+/*
 server.createHub("scrapboard", {
 	'refreshBook' : server.requestResponse(function() {
 
@@ -60,8 +68,7 @@ server.createHub("scrapboard", {
 });
 
 
-/*server.set('spelaihopnotes', 'test', function() {
+server.set('spelaihopnotes', 'test', function() {
 
 })*/
 
-server.start();

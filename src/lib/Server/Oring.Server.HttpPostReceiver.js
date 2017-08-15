@@ -31,11 +31,11 @@ var create = function() {
 					_log = this._log;
 				
 					oringServer.on('webRequest', function(e) {
-						
 						var params = serverUtilities.parseQuerystring(e.request.url);
+						
 
 						if (e.request.method.toLowerCase() == "post" && e.request.headers["x-oring-request"]) {
-
+console.log("hm");
 								var showError = null;
 								
 								oringServer.getConnectionById(e.request.headers["x-oring-request"])

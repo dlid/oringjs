@@ -18,7 +18,7 @@ var OringServer = function(protocolArray, options) {
 			_protocols = [],
 			_webServer, 
 			_logger = null,
-			_eventNames = ['connected', 'webRequest'],
+			_eventNames = ['connecting', 'connected', 'disconnected', 'webRequest'],
 			settings = extend({
 				port : 1234,
         enum : {
@@ -53,6 +53,12 @@ var OringServer = function(protocolArray, options) {
 
 
   var EventCallingObject = {
+    _currentConnection : null,
+    getConnectionId : function() {
+      if (this._currentConnection)
+        return this._currentConnection.getConnectionId();
+      return null;
+    },
     Hubs : {
       get : function(name) {},
       getNames : function() {},
@@ -60,10 +66,9 @@ var OringServer = function(protocolArray, options) {
     },
     
     Connections : {
-      getCurrent : function() {},
       getAll : _connectionManager.getAll,
       getByProperty : _connectionManager.findByProperty,
-      getById : _connectionManager.getByid
+      getById : _connectionManager.getById
     },
 
     /**
@@ -123,16 +128,45 @@ var OringServer = function(protocolArray, options) {
 
   		},
       parseIncomingMessage : IncomingMessageBase.parse,
-  		triggerConnectedEvent : function(client, parameters) {
+  		triggerConnectedEvent : function(client) {
+        if (_eventhandlers['connected']) {
+          for (var i=0; i < _eventhandlers['connected'].length; i+=1) {
+            var m = _eventhandlers['connected'][i];
+            setTimeout(function() {
+              m.call(Object.create(EventCallingObject, {
+                _currentConnection : {value : client }
+              }), client.getConnectionId() );
+            }, 1);
+          }
+        }
+      },
+      triggerDisconnectedEvent : function(client) {
+        if (_eventhandlers['disconnected']) {
+          for (var i=0; i < _eventhandlers['disconnected'].length; i+=1) {
+            var m = _eventhandlers['disconnected'][i];
+            setTimeout(function() {
+              m.call(Object.create(EventCallingObject), client.getConnectionId() );
+            }, 1);
+          }
+        }
+      },
+      triggerConnectingEvent : function(client, parameters) {
         var d = new Deferred();
-  			if (_eventhandlers['connected']) {
-          serverUtilities.deferredWait(_eventhandlers['connected'],  
+
+  			if (_eventhandlers['connecting']) {
+          serverUtilities.deferredWait(_eventhandlers['connecting'],  
             Object.create(EventCallingObject), { 
-              parameters : parameters 
+              parameters : parameters,
+              _currentConnection : {value : client }
             })
             .done(d.resolve)
-            .fail(d.reject);
-  			}
+            .fail(function() {
+              console.warn("TRIGGERFAILE");
+              d.reject();
+            });
+  			} else {
+          d.resolve();
+        }
         return d.promise();
   		},
   		getParametersFromURL : serverUtilities.parseQuerystring,
@@ -152,65 +186,71 @@ var OringServer = function(protocolArray, options) {
               args = incomingMessage.getData().args;
 
             if (_methods[hub] && _methods[hub][method]) {
-              console.log(" ");
-              console.warn("INVOKE " + hub + "." + method );
-              console.warn(" hasResponse " + _methods[hub][method].hasResponse() );
-              console.warn(" isLongRunning " + _methods[hub][method].isLongRunning() );
 
-              if (_methods[hub][method].hasResponse()) {
-                var invokationDeferred  = new Deferred();
+              _connectionManager.getById(connectionID).done(function(client) {
 
-                invokationDeferred.promise().done(function(result) {
+                console.log(" ");
+                console.warn("INVOKE " + hub + "." + method );
+                console.warn(" hasResponse " + _methods[hub][method].hasResponse() );
+                console.warn(" isLongRunning " + _methods[hub][method].isLongRunning() );
 
-                  console.warn("OK, promise resolved for " + connectionID);
-                  if (!_methods[hub][method].isLongRunning()) {
-                    deferred.resolve(OutgoingMessageBase.create("oring:response__" + incomingMessage.getInvocationID(), result));
-                  } else {
-                    var c = getConnectionById(connectionID);
+                if (_methods[hub][method].hasResponse()) {
+                  var invokationDeferred  = new Deferred();
 
-                    _connectionManager.getById(connectionID).done(function(c) {
-                        console.warn("Send long running response to " + connectionID);
-                        c.send(OutgoingMessageBase.create("oring:response__" + incomingMessage.getInvocationID(), result));
-                    });
+                  invokationDeferred.promise().done(function(result) {
 
-                  }
-                }).fail(function() {
-                  console.warn("Hm, rejected yeah? " + connectionID);
-                  if (!_methods[hub][method].isLongRunning()) {
-                    deferred.reject();
-                  }
-                });
+                    console.warn("OK, promise resolved for " + connectionID);
+                    if (!_methods[hub][method].isLongRunning()) {
+                      deferred.resolve(OutgoingMessageBase.create("oring:response__" + incomingMessage.getInvocationID(), result));
+                    } else {
+                      var c = getConnectionById(connectionID);
 
-                setTimeout(function() {
-                  _methods[hub][method].invoke(Object.create(EventCallingObject, { 
-                    resolve : {
-                      value : function(r) {
-                        invokationDeferred.resolve(r);
-                      }
-                    },
-                    reject : {
-                      value : function(r) {
-                        invokationDeferred.reject(r);
-                      }
+                      _connectionManager.getById(connectionID).done(function(c) {
+                          console.warn("Send long running response to " + connectionID);
+                          c.send(OutgoingMessageBase.create("oring:response__" + incomingMessage.getInvocationID(), result));
+                      });
+
                     }
-                  }), args);
-                }, 10);
-              } else {
-                setTimeout(function() {
-                  _methods[hub][method].invoke(Object.create(EventCallingObject), args);
-                }, 10);
-              }
-              console.log(" ");
-              console.log(" ");
-              console.log(" ");
+                  }).fail(function() {
+                    console.warn("Hm, rejected yeah? " + connectionID);
+                    if (!_methods[hub][method].isLongRunning()) {
+                      deferred.reject();
+                    }
+                  });
 
-               if (_methods[hub][method].isLongRunning() || !_methods[hub][method].hasResponse()) {
-                console.warn("LONG RUNNING or NO RESPONSE - resolve at once");
-                // For long polling this will return a response immediatly and the response
-                // will be sent later via the polling
-                console.log( deferred.isResolved() ? "already resolved" : "not resolved" );
-                deferred.resolve(null);
-              }
+                  setTimeout(function() {
+                    _methods[hub][method].invoke(Object.create(EventCallingObject, {
+                      _currentConnection : {value : client }, 
+                      resolve : {
+                        value : function(r) {
+                          invokationDeferred.resolve(r);
+                        }
+                      },
+                      reject : {
+                        value : function(r) {
+                          invokationDeferred.reject(r);
+                        }
+                      }
+                    }), args);
+                  }, 10);
+                } else {
+                  setTimeout(function() {
+                    _methods[hub][method].invoke(Object.create(EventCallingObject, {
+                      _currentConnection : {value : client }
+                    }), args);
+                  }, 10);
+                }
+                console.log(" ");
+                console.log(" ");
+                console.log(" ");
+
+                 if (_methods[hub][method].isLongRunning() || !_methods[hub][method].hasResponse()) {
+                  // For long polling this will return a response immediatly and the response
+                  // will be sent later via the polling
+                  deferred.resolve(null);
+                }
+              });
+
             }
            
 
