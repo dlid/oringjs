@@ -57,7 +57,7 @@ function parseMessage(msg) {
 	} else if (typeof msg === "object") {
 		o = msg;
 	}
-	if (typeof o === "object") {
+	if (o && typeof o === "object") {
 		if (typeof o._d !== "undefined" && typeof o._t !== "undefined" && typeof o._w !== "undefined") {
 			var m = Object.create(ServerMessage, {
 				data : {

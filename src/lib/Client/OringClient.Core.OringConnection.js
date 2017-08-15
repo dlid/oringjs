@@ -23,12 +23,20 @@
         this.c.onmessage(msg);
    },
 
+
+    stop : function() {
+        if (this.c)
+            this.c.stop();
+    },
+
+
    // Initialize
    start : function(currentClient, handshakeCompleteCallback) {
     var self = this,
-        pendingRequests = this._pr;
+        pendingRequests = this._pr,
+        connectionContext;
     
-    this.c = currentClient;
+        this.c = currentClient;
 
         currentClient.onclose = function() {
             console.error(currentClient.name, "closed");
@@ -44,7 +52,7 @@
                 if (m.getType() == "oring:handshake") {
                     
 
-                    var connectionContext = Object.create(ConnectionContext);
+                    connectionContext = Object.create(ConnectionContext);
 
                     if (connectionContext.setupContext(m, self)) {
                         this.handshakeComplete = true;
@@ -68,7 +76,9 @@
                     pendingRequests[m.getType()]._def.resolve(m.getData());
                     return;
                 } else if (m.getType() == "oring:event") {
-                    console.warn("EVENT RECEIVED", m.getData().name, m.getData().eventData);
+                    if (connectionContext) {
+                        connectionContext._triggerEvent(m.getData().name, m);
+                    }
                 }
             }
         };
@@ -79,6 +89,8 @@
 // and listen to events
 var ConnectionContext = {
     
+    _eventhandlers : {},
+
     /**
      * Listen for a serverside event
      *
@@ -86,6 +98,19 @@ var ConnectionContext = {
      * @param      {<function>}  callbackFunction  The callback function
      */
     on : function(eventName, callbackFunction) {
+        if (!this._eventhandlers[eventName]) this._eventhandlers[eventName] = [];
+        this._eventhandlers[eventName].push(callbackFunction);
+    },
+
+    _triggerEvent: function(name, message) {
+        var events = this._eventhandlers[name];
+        console.warn("TRIGGER", name, message);
+
+        if (events) {
+            for (var i=0; i < events.length; i+=1) {
+                events[i](message.getData().eventData);
+            }
+        }
 
     },
 

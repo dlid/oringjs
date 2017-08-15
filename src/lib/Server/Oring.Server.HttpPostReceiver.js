@@ -36,28 +36,44 @@ var create = function() {
 
 						if (e.request.method.toLowerCase() == "post" && e.request.headers["x-oring-request"]) {
 
-								var client = oringServer.getConnectionById(e.request.headers["x-oring-request"]),
-									showError = null;
-								if (client) {
-									console.log("**** CLIENT " + client.getConnectionId());
+								var showError = null;
+								
+								oringServer.getConnectionById(e.request.headers["x-oring-request"])
+									.done(function(client) {
+										console.log("**** CLIENT " + client.getConnectionId());
+										client.seen(new Date());
 
-									console.log("  >ping client " + client.getConnectionId() + " httpPostReceiver.post");
+										console.log("  >ping client " + client.getConnectionId() + " httpPostReceiver.post");
 
-									serverUtilities.readRequestBody(e.request, function(body) {
+										serverUtilities.readRequestBody(e.request, function(body) {
 
-										var msg = oringServer.parseIncomingMessage(body);
+											var msg = oringServer.parseIncomingMessage(body);
 
-										serverUtilities.createHttpResponse(e.response, 200, {}, "inte helt implementerat (HttpPostReceiver)");
+											if(msg) {
+												oringServer.messageReceived(client.getConnectionId(), msg)
+								            	.done(function(responseMessage) {
+								            		if (responseMessage) {
+									            		console.log("responseMessage", responseMessage);
+											          	client.send(responseMessage);
+											         }
+								            	})
+								            	.fail(function(r) {
+								            		serverUtilities.createHttpResponse(e.response, 200, {}, "failed (HttpPostReceiver)");
+								            	});
+											} else {
+												var m = oringServer.createMessage('oring:invalid-msg');
+								            	serverUtilities.createHttpResponse(e.response, 200, {}, m.toJSON());
+											}
 
+										});
+
+										//client.setProperty(enums.seenPropertyKey, new Date());
+										e.cancel();
+									})
+									.fail(function() {
+										serverUtilities.createHttpResponse(e.response, 500, {}, 'Unkown connection ');
 									});
-
-									//client.setProperty(enums.seenPropertyKey, new Date());
-									e.cancel();
-								} else {
-									serverUtilities.showErrorResponse(response, 500, 'Connection ID misssing');
-								}
-
-
+					
 /*
 								e.cancel();
 								_clientSeen[e.request.headers["x-oring-request"]] = new Date();

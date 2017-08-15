@@ -1,13 +1,41 @@
 var server = require("./index.js").createServer();
 
 
+var DJUR = {
+	namn : "Okänt djur",
+	setName : function(n) {
+		this.namn = n;
+	}
+};
+
+
+
+
 // A new user is connected
 server.on('connected', function(eventArgs) {
-
+	var resolve = this.resolve,
+		reject = this.reject;
 	// Add the connection to a group
 //	this.Groups.Add(eventArgs.client.connectionId, "en grupp");
 
-console.log("PARAMS", JSON.stringify(eventArgs));
+	console.log("A user connected", JSON.stringify(eventArgs));
+
+	this.Connections.getAll().done(function(r) {
+		resolve();
+		console.log("CURRENT CONNECTION COUNT: " + r.length)
+	})
+
+//	this.Connection.SetProperty('something', 'yes');
+//  this.Connection.close()
+//  this.Connection.reconnect();
+//	this.getConnectionsByProperty('something', 'yes');
+//	this.ServerProperties.set('connectionCount', ) / get
+
+//	this.send( null, 'connected', { users : 0 } );
+
+
+//	this.resolve(); // Accept connection
+	                // this.reject() // Deny connection
 
 	// If we do not have the required parameters, deny the connection
 	//eventArgs.cancel("because?");

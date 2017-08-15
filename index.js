@@ -4,6 +4,8 @@ var OringServer = require("./src/lib/Server/Oring.Server.js");
 var WebsocketProtocol = require("./src/lib/Server/Oring.Server.Websocket.js");
 var LongPollingProtocol = require("./src/lib/Server/Oring.Server.LongPolling.js");
 var HttpPostReceiverProtocol = require("./src/lib/Server/Oring.Server.HttpPostReceiver.js");
+var Connection = require("./src/lib/Server/Oring.Server.ConnectionBase.js");
+
 
 
 module.exports = {

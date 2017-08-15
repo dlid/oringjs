@@ -51,29 +51,45 @@ var create = function() {
 								});
 
 
+								var parameters = serverUtilities.parseQuerystring(e.request.url);
+
+								var eventResult = oringServer.triggerConnectedEvent(client, parameters);
+								if (eventResult.cancel) {
+									var message = oringServer.createMessage("oring:connection-refused");
+									serverUtilities.createHttpResponse(e.response, 500, null, message.toJSON())
+									e.cancel();
+									return;
+								}
+
 								oringServer.addConnection(client);
 								console.log("  >ping client " + client.getConnectionId() + " longpolling.webrequest");
 								client.seen(new Date());
 
-								function checkIfSeen(c) {
-									var now = new Date(),
-										seen = c.seen();
-									if (seen) {
-										var diff = now.getTime() - seen.getTime();
-										console.warn(c.getConnectionId() + " diff", diff);
-										if (diff > 20000) {
-											console.log("Connection timed out" );
-											oringServer.lostConnection(c);
-											return;
+								function checkIfSeen(connectionId) {
+									oringServer.getConnectionById(connectionId).done(function(c) {
+										var now = new Date(),
+											seen = c.seen();
+										if (seen) {
+											var diff = now.getTime() - seen.getTime();
+											if (diff > 20000) {
+												console.log("["+connectionId+"] Connection timed out" );
+												oringServer.lostConnection(connectionId);
+												return;
+											}
+											setTimeout(function() {checkIfSeen(connectionId);}, 5000);
+										} else {
+											console.warn("["+connectionId+"] Could not get __seen value");
 										}
-										setTimeout(function() {checkIfSeen(c);}, 5000);
-									} else {
-										console.warn("Could not get __seen value");
-									}
+									})
+									.fail(function() {
+										console.log("["+connectionId+"] Connection disappeared" );
+										oringServer.lostConnection(connectionId);
+									});
+									
 								}
 
-								console.warn("Start check...");
-								setTimeout(function() {checkIfSeen(client);}, 5000);
+								console.warn("["+client.getConnectionId()+"] Start check...");
+								setTimeout(function() {checkIfSeen(client.getConnectionId())}, 5000);
 
 								// The handshake yo
 								var message = oringServer.createMessage("oring:handshake", {id : client.getConnectionId(), methods : oringServer.getMethodsForClient(client) });
@@ -89,44 +105,43 @@ var create = function() {
 							} else if (e.request.method.toLowerCase() == "get" && e.request.headers["x-oring-request"]) {
 								// Polling
 								
-								var client = oringServer.getConnectionById(e.request.headers["x-oring-request"]);
-								
-								if (client) {
-									e.cancel();	
-									client.seen(new Date());
-									console.log("  >ping client " + client.getConnectionId() + " longpolling.get latest");
-									var messageJson = "",
-										connectionID = client.getConnectionId();
+								oringServer.getConnectionById(e.request.headers["x-oring-request"])	
+									.done(function(client) {
+										e.cancel();	
+										client.seen(new Date());
+										console.log("  >ping client " + client.getConnectionId() + " longpolling.get latest");
+										var messageJson = "",
+											connectionID = client.getConnectionId();
 
-									if (_messageQueue[connectionID]) {
-										var _itemsToSend = _messageQueue[connectionID].slice();
-										_messageQueue[connectionID] = [];
-										for (var i=0; i < _itemsToSend.length; i++) {
-											if (messageJson.length > 0) messageJson += ",";
-											messageJson+=_itemsToSend[i].m;
+										if (_messageQueue[connectionID]) {
+											var _itemsToSend = _messageQueue[connectionID].slice();
+											_messageQueue[connectionID] = [];
+											for (var i=0; i < _itemsToSend.length; i++) {
+												if (messageJson.length > 0) messageJson += ",";
+												messageJson+=_itemsToSend[i].m;
+											}
 										}
-									}
-									e.response.setHeader('Access-Control-Allow-Origin', '*');
-									e.response.setHeader('Content-Type', 'application/json');
-									e.response.writeHead(200);
-					  	        	e.response.write("["+messageJson+"]");
-					  	        	e.response.end();
-								} else {
-									e.cancel();	
-
-									/// Server does not have the client specified. Tell client to shake hands
-									var message = oringServer.createMessage("oring:reacquaint");
-				 					e.response.writeHead(200, {
-						              'Content-type': 'application/json',
-						              'Access-Control-Allow-Origin' : '*'
-						          	});
-					  	        	e.response.write(message.toJSON());
-					  	        	e.response.end();
-									e.cancel();
+										e.response.setHeader('Access-Control-Allow-Origin', '*');
+										e.response.setHeader('Content-Type', 'application/json');
+										e.response.writeHead(200);
+						  	        	e.response.write("["+messageJson+"]");
+						  	        	e.response.end();
+									})
+									.fail(function() {
+										e.cancel();
+										/// Server does not have the client specified. Tell client to shake hands
+										var message = oringServer.createMessage("oring:reacquaint");
+					 					e.response.writeHead(200, {
+							              'Content-type': 'application/json',
+							              'Access-Control-Allow-Origin' : '*'
+							          	});
+						  	        	e.response.write(message.toJSON());
+						  	        	e.response.end();
+										
+									});
 								}
 								
 							}
-						}
 					});
 					return true;
 				}

@@ -11,7 +11,9 @@ function OringClient(options) {
 	_preferredClients  = [],
 	ix,
 	_protocolNotFound = false,
-	_connection;
+	_connection,
+	_isEnabled = false,
+	_connectCallback;
 
 	if (options.transferProtocols)
 		settings.transferProtocols = options.transferProtocols;
@@ -47,12 +49,14 @@ function OringClient(options) {
 				if (ix < _preferredClients.length) {
 
 					c = new _preferredClients[ix].class(_preferredClients[ix].name);
-					c.onclose = function() {
-						console.error("Connection was lost!!!! NOOOO!");
-					};
+					
 					
 					c.start(_uri, settings.hubs, {parseMessage : parseMessage})
 						.done(function(e) {
+
+							c.onclose = function() {
+								console.error("Connection was lost!!!! NOOOO!");
+							};
 
 							if (_connection) {
 								console.warn("[OOAOAAO] An existing connection exists! MÖÖÖRGE!");
@@ -76,8 +80,10 @@ function OringClient(options) {
 						});
 
 				} else {
-					logError("No protocol could connect ("+settings.transferProtocols.join(',')+")");
 					deferred.reject();
+					setTimeout(function() {
+						deferred.reject();
+					})
 				}
 			}
 
@@ -87,8 +93,31 @@ function OringClient(options) {
 	}
 
 
-	this.start = function() {
-		return connect();
+	this.start = function(connectCallback) {
+		connectCallback = connectCallback;
+		_isEnabled = true;
+		logInfo("Attempting to connect...");
+		var attemptConnect = function() {
+			connect()
+			.done(function(connectionContext) {
+				connectCallback(connectionContext);
+			})
+			.fail(function() {
+				if (_isEnabled) {
+					logInfo("Could not connect. Waiting to retry...");
+					setTimeout(attemptConnect, 5000);
+				}
+			})
+		}
+		attemptConnect();
+
+	}
+
+	this.stop = function() {
+		if (_connection) {
+			_connection.stop();
+		}
+		_isEnabled = false;
 	}
 
 

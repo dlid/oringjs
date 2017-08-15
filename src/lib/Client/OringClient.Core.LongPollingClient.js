@@ -92,8 +92,12 @@ function LongPollingClient(name) {
 						}, function(r) {
 							var o;
 							try {o = JSON.parse(r);} catch(e) {}
+
+							console.warn("POLL RECEIVED", r);
+
 							if (typeof o == "object" && o.length >= 0) {
 								for (var i=0; i < o.length; i+=1) {
+									console.warn(" poll message ["+i+"]", o[i]);
 									var m = _opt.parseMessage(o[i]);
 									if(m) {
 										failedPollAttempts = 0;
@@ -101,6 +105,7 @@ function LongPollingClient(name) {
 									}
 								}
 								_pollTimer = setTimeout(pollTick, 10000);
+								return;
 							}
 
 							// We received something strange. A fail this is!
@@ -108,7 +113,7 @@ function LongPollingClient(name) {
 								if (typeof self.onclose == "function") {
 									if (typeof self.onopen == "function") {
 										logInfo("longPolling unexpected response (attempt "+failedPollAttempts+")");
-										self.onopen();
+										self.onclose();
 									}
 								}
 							} else {

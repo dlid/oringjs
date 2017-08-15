@@ -2,12 +2,13 @@ var extend  = require("extend"),
 		http = require('http'),
 		winston = require('winston'),
 		uuid = require('uuid'),
-		OringClientBase = require('./Oring.ClientBase.js'),
+		ConnectionBase = require('./Oring.Server.ConnectionBase.js'),
     OringWebMethod = require('./Oring.Server.WebMethodBase.js'),
     serverUtilities = require('./Oring.Server.Utilities.js'),
     IncomingMessageBase = require('./Oring.Server.IncomingMessageBase.js'),
     OutgoingMessageBase = require('./Oring.Server.OutgoingMessageBase.js'),
-    Deferred = require('deferred-js');
+    Deferred = require('deferred-js'),
+    ConnectionManagerBasic = require('./Oring.Server.ConnectionManagerBasic.js');
 
 var OringServer = function(protocolArray, options) {
 
@@ -26,7 +27,14 @@ var OringServer = function(protocolArray, options) {
 			}, options),
       _clients = {},
       _clientCount = 0,
-      _disconnectedClients = {};
+      _disconnectedClients = {},
+      _connectionManager;
+
+      //if (!settings.connectionManager || (settings.connectionManager && settings.connectionManager.__proto__ == ConnectionManagerBasic) ) {
+        settings.connectionManager = new ConnectionManagerBasic();
+      //}
+
+      _connectionManager = settings.connectionManager;
 
 		this.getWebServer = function() {
 	  	return _webServer;
@@ -43,6 +51,44 @@ var OringServer = function(protocolArray, options) {
       return null;
     }
 
+
+  var EventCallingObject = {
+    Hubs : {
+      get : function(name) {},
+      getNames : function() {},
+      getConnections : function() {}
+    },
+    
+    Connections : {
+      getCurrent : function() {},
+      getAll : _connectionManager.getAll,
+      getByProperty : _connectionManager.findByProperty,
+      getById : _connectionManager.getByid
+    },
+
+    /**
+     * Send an event to specified clients
+     *
+     * @param      {string|string[]}  target  The target id or ids to send to
+     * @param      {<type>}  name    The event name
+     * @param      {<type>}  data    The event data
+     */
+    send : function(target, name, data) {
+      target = serverUtilities.toArray(target);
+
+      _connectionManager.getAll(function(c) {
+        if ( target == null || target.indexOf(c.getConnectionId()) != -1 ) {
+          c.send( OutgoingMessageBase.create("oring:event", {
+            name : name,
+            eventData : data
+          }));
+        };
+      })
+
+    }
+
+  };
+
   // Utilities for the protocols to use
   function _internalServerInstance(protocolInstance) {
   	return {
@@ -51,41 +97,11 @@ var OringServer = function(protocolArray, options) {
   			if (!options.send) {
   				throw "createConnection options was missing send method";
   			}
-
-  			return Object.create(OringClientBase, {
-  				connectionId : {value : uuid.v4()},
-  				protocolName : {value : protocolInstance.getName()},
-  				created : {value : new Date()},
-  				send : {value : options.send }
-  			});
-
+        return ConnectionBase.create(protocolInstance.getName(), options.send);
   		},
-      getConnectionById : getConnectionById,
-      lostConnection : function(client) {
-        // Connection was lost, but we will give the user some time to re-connect
-        _disconnectedClients[client.getConnectionId()] = client;
-        delete _clients[client.getConnectionId()];
-        _clientCount--;
-        
-        var clientKeys = Object.keys(_clients);
-
-        for(var i = 0; i < clientKeys.length; i++) {
-            _clients[ clientKeys[i]].send( OutgoingMessageBase.create("connection-removed", { count : _clientCount }) );
-        }
-
-      },
-      addConnection : function(client) {
-        _clients[client.getConnectionId()] = client;
-        _clientCount++;
-
-        var clientKeys = Object.keys(_clients);
-        for(var i = 0; i < clientKeys.length; i++) {
-          if (clientKeys[i] != client.getConnectionId()) {
-            _clients[clientKeys[i]].send( OutgoingMessageBase.create("connection-added", { count : _clientCount }) );
-          }
-        }
-
-      },
+      getConnectionById : _connectionManager.getById,
+      lostConnection : _connectionManager.suspend,
+      addConnection : _connectionManager.add,
       on : _self.on,
   		getMethodsForClient : function(client) {
   			var result = [];
@@ -108,42 +124,16 @@ var OringServer = function(protocolArray, options) {
   		},
       parseIncomingMessage : IncomingMessageBase.parse,
   		triggerConnectedEvent : function(client, parameters) {
+        var d = new Deferred();
   			if (_eventhandlers['connected']) {
-  				for (var i=0; i < _eventhandlers['connected'].length; i++) {
-  					var cancelReason = null,
-  							cancelled = false,
-  							addToGroups = [],
-	  						eventArgs = {
-		  						client : client,
-		  						param : parameters,
-		  						cancel : function(reason) {
-		  							cancelReason = reason;
-		  							cancelled = true;
-		  						}
-		  					};
-
-  					_eventhandlers['connected'][i].call({
-  						Groups : {
-  							Add : function(connectionId, groupName) {
-	  							console.warn("Add " + connectionId + " to group '"+groupName+"'");
-	  							addToGroups.push(groupName);
-	  						}
-  						}
-  					}, eventArgs);
-
-  					if (cancelled) {
-  						return {
-  							cancel : true,
-  							reason : cancelReason
-  						};
-  					}
-  				}
+          serverUtilities.deferredWait(_eventhandlers['connected'],  
+            Object.create(EventCallingObject), { 
+              parameters : parameters 
+            })
+            .done(d.resolve)
+            .fail(d.reject);
   			}
-				return {
-					cancel : false,
-					client : client,
-					groups : addToGroups
-				};
+        return d.promise();
   		},
   		getParametersFromURL : serverUtilities.parseQuerystring,
   		createLogger : createLogger,
@@ -176,6 +166,7 @@ var OringServer = function(protocolArray, options) {
                   if (!_methods[hub][method].isLongRunning()) {
                     deferred.resolve(OutgoingMessageBase.create("oring:response__" + incomingMessage.getInvocationID(), result));
                   } else {
+                    console.warn("This is long running though");
                     var c = getConnectionById(connectionID);
                     if (c) {
                       c.send(OutgoingMessageBase.create("oring:response__" + incomingMessage.getInvocationID(), result));
@@ -189,48 +180,42 @@ var OringServer = function(protocolArray, options) {
                 });
 
                 setTimeout(function() {
-                  _methods[hub][method].invoke({ 
-                    send : function(connectionId, name, eventData) {
-                      var data = {
-                        name : name,
-                        eventData : eventData
-                      };
-
-                      if (connectionId == null) {
-                        var clientKeys = Object.keys(_clients);
-                        for (var i=0; i < clientKeys.length; i++) {
-                          _clients[clientKeys[i]].send(OutgoingMessageBase.create("oring:event", data));
-                        }
-                      } else {
-                        _clients[connectionId].send(OutgoingMessageBase.create("oring:event", data));
+                  _methods[hub][method].invoke(Object.create(EventCallingObject, { 
+                    resolve : {
+                      value : function(r) {
+                        invokationDeferred.resolve(r);
                       }
-
                     },
-                    resolve : function(r) {
-                      invokationDeferred.resolve(r);
-                    },
-                    reject : function(r) {
-                      invokationDeferred.reject(r);
+                    reject : {
+                      value : function(r) {
+                        invokationDeferred.reject(r);
+                      }
                     }
-                  }, args);
+                  }), args);
                 }, 10);
-
-                if (_methods[hub][method].isLongRunning()) {
-                  // For long polling this will return a response immediatly and the response
-                  // will be sent later via the polling
-                  deferred.resolve(null);
-                }
-
+              } else {
+                setTimeout(function() {
+                  _methods[hub][method].invoke(Object.create(EventCallingObject), args);
+                }, 10);
               }
-
-
               console.log(" ");
               console.log(" ");
               console.log(" ");
             }
+
+
+            if (_methods[hub][method].isLongRunning() || !_methods[hub][method].hasResponse()) {
+              console.warn("LONG RUNNING or NO RESPONSE - resolve at once");
+              // For long polling this will return a response immediatly and the response
+              // will be sent later via the polling
+              console.log( deferred.isResolved() ? "already resolved" : "not resolved" );
+              deferred.resolve(OutgoingMessageBase.create("oring:noop"));
+            }
+
         }
 
         if (!incomingMessage.expectingResponse()) {
+          console.log("Not expecting response");
           deferred.resolve(null);
         } else {
           

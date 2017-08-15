@@ -627,8 +627,12 @@
   						}, function(r) {
   							var o;
   							try {o = JSON.parse(r);} catch(e) {}
-  							if (typeof o == "object" && o.length > 0) {
+
+  							console.warn("POLL RECEIVED", r);
+
+  							if (typeof o == "object" && o.length >= 0) {
   								for (var i=0; i < o.length; i+=1) {
+  									console.warn(" poll message ["+i+"]", o[i]);
   									var m = _opt.parseMessage(o[i]);
   									if(m) {
   										failedPollAttempts = 0;
@@ -636,6 +640,7 @@
   									}
   								}
   								_pollTimer = setTimeout(pollTick, 10000);
+  								return;
   							}
 
   							// We received something strange. A fail this is!
@@ -643,7 +648,7 @@
   								if (typeof self.onclose == "function") {
   									if (typeof self.onopen == "function") {
   										logInfo("longPolling unexpected response (attempt "+failedPollAttempts+")");
-  										self.onopen();
+  										self.onclose();
   									}
   								}
   							} else {
@@ -744,7 +749,7 @@
   	} else if (typeof msg === "object") {
   		o = msg;
   	}
-  	if (typeof o === "object") {
+  	if (o && typeof o === "object") {
   		if (typeof o._d !== "undefined" && typeof o._t !== "undefined" && typeof o._w !== "undefined") {
   			var m = Object.create(ServerMessage, {
   				data : {
@@ -813,12 +818,20 @@
           this.c.onmessage(msg);
      },
 
+
+      stop : function() {
+          if (this.c)
+              this.c.stop();
+      },
+
+
      // Initialize
      start : function(currentClient, handshakeCompleteCallback) {
       var self = this,
-          pendingRequests = this._pr;
+          pendingRequests = this._pr,
+          connectionContext;
       
-      this.c = currentClient;
+          this.c = currentClient;
 
           currentClient.onclose = function() {
               console.error(currentClient.name, "closed");
@@ -834,7 +847,7 @@
                   if (m.getType() == "oring:handshake") {
                       
 
-                      var connectionContext = Object.create(ConnectionContext);
+                      connectionContext = Object.create(ConnectionContext);
 
                       if (connectionContext.setupContext(m, self)) {
                           this.handshakeComplete = true;
@@ -858,7 +871,9 @@
                       pendingRequests[m.getType()]._def.resolve(m.getData());
                       return;
                   } else if (m.getType() == "oring:event") {
-                      console.warn("EVENT RECEIVED", m.getData().name, m.getData().eventData);
+                      if (connectionContext) {
+                          connectionContext._triggerEvent(m.getData().name, m);
+                      }
                   }
               }
           };
@@ -869,6 +884,8 @@
   // and listen to events
   var ConnectionContext = {
       
+      _eventhandlers : {},
+
       /**
        * Listen for a serverside event
        *
@@ -876,6 +893,19 @@
        * @param      {<function>}  callbackFunction  The callback function
        */
       on : function(eventName, callbackFunction) {
+          if (!this._eventhandlers[eventName]) this._eventhandlers[eventName] = [];
+          this._eventhandlers[eventName].push(callbackFunction);
+      },
+
+      _triggerEvent: function(name, message) {
+          var events = this._eventhandlers[name];
+          console.warn("TRIGGER", name, message);
+
+          if (events) {
+              for (var i=0; i < events.length; i+=1) {
+                  events[i](message.getData().eventData);
+              }
+          }
 
       },
 
@@ -1081,7 +1111,9 @@
   	_preferredClients  = [],
   	ix,
   	_protocolNotFound = false,
-  	_connection;
+  	_connection,
+  	_isEnabled = false,
+  	_connectCallback;
 
   	if (options.transferProtocols)
   		settings.transferProtocols = options.transferProtocols;
@@ -1117,12 +1149,14 @@
   				if (ix < _preferredClients.length) {
 
   					c = new _preferredClients[ix].class(_preferredClients[ix].name);
-  					c.onclose = function() {
-  						console.error("Connection was lost!!!! NOOOO!");
-  					};
+  					
   					
   					c.start(_uri, settings.hubs, {parseMessage : parseMessage})
   						.done(function(e) {
+
+  							c.onclose = function() {
+  								console.error("Connection was lost!!!! NOOOO!");
+  							};
 
   							if (_connection) {
   								console.warn("[OOAOAAO] An existing connection exists! MÖÖÖRGE!");
@@ -1146,8 +1180,10 @@
   						});
 
   				} else {
-  					logError("No protocol could connect ("+settings.transferProtocols.join(',')+")");
   					deferred.reject();
+  					setTimeout(function() {
+  						deferred.reject();
+  					})
   				}
   			}
 
@@ -1157,8 +1193,31 @@
   	}
 
 
-  	this.start = function() {
-  		return connect();
+  	this.start = function(connectCallback) {
+  		connectCallback = connectCallback;
+  		_isEnabled = true;
+  		logInfo("Attempting to connect...");
+  		var attemptConnect = function() {
+  			connect()
+  			.done(function(connectionContext) {
+  				connectCallback(connectionContext);
+  			})
+  			.fail(function() {
+  				if (_isEnabled) {
+  					logInfo("Could not connect. Waiting to retry...");
+  					setTimeout(attemptConnect, 5000);
+  				}
+  			})
+  		}
+  		attemptConnect();
+
+  	}
+
+  	this.stop = function() {
+  		if (_connection) {
+  			_connection.stop();
+  		}
+  		_isEnabled = false;
   	}
 
 

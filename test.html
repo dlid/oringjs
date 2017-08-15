@@ -9,6 +9,7 @@
             <span id="status-light" style="margin-right: 10px;display: inline-block;width: 16px; height: 16px; border-radius: 8px; box-shadow: #414141 2px 2px 5px; background-color: red;"></span>
             <span id="status-text">Not connected</span>
             
+            
         </div>
 
     <fieldset id="connect">
@@ -20,6 +21,11 @@
     
             <hr />
     <fieldset id="message" style="display: none;">
+
+        <div id="chat" style="width: 600px; height: 10em; border:1px solid #eee; padding:4px;">
+
+        </div>
+
         <input type="text" size="40" id="bcast"  />
     </fieldset>
         
@@ -51,15 +57,17 @@
                 hubs : ['scrapbook', 'user']
             });
 
-            oringClient.start().done(function(conn) {
+            oringClient.start(function(conn) {
                  document.getElementById('status-light').style.backgroundColor = 'green';
                  document.getElementById('status-text').innerHTML = 'Connected using <strong>' + conn.oring.transferProtocol + "</strong>";
 
                 conn.on('onChatMessage', function(e) {
+
+                    document.getElementById('chat').innerHTML += '<p>' + e.message + '</p>';
+
                     console.warn("RECEIVED onChatMessage EVENT", e);
                 });
 
-             
 
                 document.getElementById('message').style.display = 'block';
                 var bcast = document.getElementById('bcast');
@@ -75,9 +83,6 @@
                 }
 
 
-            })
-            .fail(function() {
-                log("<span style='color:red'>Could not connect to server. Remember to start it!</span>");
             });
 
         }

@@ -49,60 +49,49 @@ var create = function() {
 										}
 									}
 								}),
-										parameters = oringServer.getParametersFromURL(request.resource);
+								parameters = oringServer.getParametersFromURL(request.resource);
 
 								_log.info(client.id);
 
-								var eventResult = oringServer.triggerConnectedEvent(client, parameters);
-								if (!eventResult.cancel) {
-									console.log("GROUPS " + JSON.stringify(eventResult.groups) )
-									conn = request.accept(options.protocolName, request.origin);
-									
-									var handshakeResponse = oringServer.createMessage("oring:handshake", 
-										{ id : client.getConnectionId(), methods : oringServer.getMethodsForClient(client)});
+								var eventResult = oringServer.triggerConnectedEvent(client, parameters)
+									.done(function() {
+										conn = request.accept(options.protocolName, request.origin);
 
-									client.send(handshakeResponse);
+										oringServer.addConnection(client);
 
-									conn.on('close', function() {
-										oringServer.lostConnection(client);
-									});
+										var handshakeResponse = oringServer.createMessage("oring:handshake", 
+											{ id : client.getConnectionId(), methods : oringServer.getMethodsForClient(client)} );
 
-									conn.on('message', function(e) {
-										if (e.type == 'utf8') {
-											var msg = oringServer.parseIncomingMessage(e.utf8Data);
-											if(msg) {
-												oringServer.messageReceived(client.getConnectionId(), msg)
-								            	.done(function(responseMessage) {
-								            		if (responseMessage) {
-									            		console.log("responseMessage", responseMessage);
-											          	client.send(responseMessage);
-											         }
-								            	})
-								            	.fail(function() {
-								            		console.warn("FAIL");
-								            	})
+										client.send(handshakeResponse);
+
+										conn.on('close', function() {
+											oringServer.lostConnection(client);
+										});
+
+										conn.on('message', function(e) {
+											if (e.type == 'utf8') {
+												var msg = oringServer.parseIncomingMessage(e.utf8Data);
+												if(msg) {
+													oringServer.messageReceived(client.getConnectionId(), msg)
+									            	.done(function(responseMessage) {
+									            		if (responseMessage) {
+										            		console.log("responseMessage", responseMessage);
+												          	client.send(responseMessage);
+												         }
+									            	})
+									            	.fail(function() {
+									            		console.warn("FAIL");
+									            	});
+												}
 											}
-										}
+										});
+									})
+									.fail(function() {
+										request.reject(403, eventResult.reason);
 									});
-  
-									
 								} else {
-									request.reject(403, eventResult.reason);
+									request.reject(403, "Bad protocol for oringserver");
 								}
-								
-								oringServer.addConnection(client);
-
-								// Create the client object
-								
-								//oringServer.addConnection(client);
-
-								
-
-
-
-							} else {
-								request.reject(403, "Bad protocol for oringserver");
-							}
 						});
 
 					return true;
