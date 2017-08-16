@@ -40,6 +40,8 @@
 
         currentClient.onclose = function() {
             console.error(currentClient.name, "closed");
+            if(self.onclose)
+                self.onclose();
         }
 
         currentClient.onopen = function() {

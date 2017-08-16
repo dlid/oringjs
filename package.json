@@ -23,6 +23,7 @@
     "http": "0.0.0",
     "jquery-deferred": "^0.3.0",
     "js-extend": "^1.0.1",
+    "log4js": "^2.3.3",
     "md5": "^1.0.0",
     "simple-ajax": "^2.6.0",
     "uuid": "^3.1.0",

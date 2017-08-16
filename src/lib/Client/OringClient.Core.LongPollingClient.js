@@ -128,6 +128,7 @@ function LongPollingClient(name) {
 							} else {
 								logInfo("longPolling failed (attempt "+failedPollAttempts+")");
 								failedPollAttempts+=1;
+								_pollTimer = setTimeout(pollTick, 5000);
 							}
 						});
 					}

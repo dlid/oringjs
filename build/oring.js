@@ -1,4 +1,4 @@
-;  /*! OringJS v0.0.1 © 2017 undefined.  License: MIT */
+;  /*! oringjs v0.0.1 © 2017 undefined.  License: MIT */
   (new function(win) { 
   function Oring() { 
   	
@@ -663,6 +663,7 @@
   							} else {
   								logInfo("longPolling failed (attempt "+failedPollAttempts+")");
   								failedPollAttempts+=1;
+  								_pollTimer = setTimeout(pollTick, 5000);
   							}
   						});
   					}
@@ -835,6 +836,8 @@
 
           currentClient.onclose = function() {
               console.error(currentClient.name, "closed");
+              if(self.onclose)
+                  self.onclose();
           }
 
           currentClient.onopen = function() {
@@ -1165,6 +1168,9 @@
   							/// Connection successful.
   							/// Hand over the connection lifecycle to a new OringConnection
   							_connection = Object.create(OringConnection);
+  							_connection.onclose = function() {
+  								console.warn("_connection closed");
+  							}
   							_connection.start(c, function(context) {
   								deferred.resolve(context);
   							});	

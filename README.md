@@ -30,6 +30,7 @@ Now you have a basic server that you can connect to using the clientside oring.j
     <head>
      <script src="oring.js"></script>
      <script>
+      // Even though it's http, a websocket connection will be attempted
       var oring = oring.create("http://localhost:1234");
 
       oring.start(function(oringContext) {

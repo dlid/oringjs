@@ -65,6 +65,9 @@ function OringClient(options) {
 							/// Connection successful.
 							/// Hand over the connection lifecycle to a new OringConnection
 							_connection = Object.create(OringConnection);
+							_connection.onclose = function() {
+								console.warn("_connection closed");
+							}
 							_connection.start(c, function(context) {
 								deferred.resolve(context);
 							});	
