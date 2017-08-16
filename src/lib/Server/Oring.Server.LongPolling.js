@@ -25,7 +25,9 @@ var create = function() {
 					webServer = oringServer.getWebServer(),
 					options = oringServer.getOptions(protocolName, this.defaultOptions),
 					_log = this._log;
-				
+					
+						_log.debug("options", options ? options : '(None)');
+
 					oringServer.on('webRequest', function(e) {
 						
 						var params = serverUtilities.parseQuerystring(e.request.url);
@@ -52,13 +54,11 @@ var create = function() {
 
 
 								var parameters = serverUtilities.parseQuerystring(e.request.url);
-								console.log("triggerConnectingEvent longPolling");
 								e.cancel();
 								oringServer.triggerConnectingEvent(client, parameters)
 									.done(function() {
-										console.log("connectingevent");
 										oringServer.addConnection(client).done(function() {
-											console.log("["+client.getConnectionId()+"] Longpolling client connected");
+											_log.log("["+client.getConnectionId()+"] Client connected");
 											client.seen(new Date());
 											oringServer.triggerConnectedEvent(client);
 
@@ -69,7 +69,7 @@ var create = function() {
 													if (seen) {
 														var diff = now.getTime() - seen.getTime();
 														if (diff > 20000) {
-															console.log("["+connectionId+"] Connection timed out" );
+															_log.debug("["+client.getConnectionId()+"] Client timed out");
 															oringServer.lostConnection(connectionId).done(function() {
 																oringServer.triggerDisconnectedEvent(c);
 															});
@@ -77,11 +77,14 @@ var create = function() {
 														}
 														setTimeout(function() {checkIfSeen(connectionId);}, 5000);
 													} else {
-														console.warn("["+connectionId+"] Could not get __seen value");
+														_log.debug("["+client.getConnectionId()+"] Could not get 'seen' value. Removing client.");
+														oringServer.lostConnection(connectionId).done(function() {
+															oringServer.triggerDisconnectedEvent(c);
+														});
 													}
 												})
 												.fail(function() {
-													console.log("["+connectionId+"] Connection disappeared" );
+													_log.debug("["+connectionId+"] Could not find client");
 													oringServer.lostConnection(connectionId);
 												});
 												
@@ -89,6 +92,7 @@ var create = function() {
 
 											setTimeout(function() {checkIfSeen(client.getConnectionId())}, 5000);
 
+											_log.debug("["+client.getConnectionId()+"] Sending handshake");
 											// The handshake yo
 											var message = oringServer.createMessage("oring:handshake", {id : client.getConnectionId(), methods : oringServer.getMethodsForClient(client) });
 						 					e.response.writeHead(200, {
@@ -108,6 +112,7 @@ var create = function() {
 									})
 									.fail(function() {
 										e.cancel();
+										_log.debug("["+client.getConnectionId()+"] Connection was refused by 'connecting' event");
 										console.warn("naea");
 										var message = oringServer.createMessage("oring:connection-refused");
 										serverUtilities.createHttpResponse(e.response, 500, null, message.toJSON())
@@ -120,11 +125,12 @@ var create = function() {
 							} else if (e.request.method.toLowerCase() == "get" && e.request.headers["x-oring-request"]) {
 								// Polling
 								
+								_log.debug("["+e.request.headers["x-oring-request"]+"] Is polling for events");
+
 								oringServer.getConnectionById(e.request.headers["x-oring-request"])	
 									.done(function(client) {
 										e.cancel();	
 										client.seen(new Date());
-										console.log("  >ping client " + client.getConnectionId() + " longpolling.get latest");
 										var messageJson = "",
 											connectionID = client.getConnectionId();
 
@@ -135,7 +141,9 @@ var create = function() {
 												if (messageJson.length > 0) messageJson += ",";
 												messageJson+=_itemsToSend[i].m;
 											}
+											_log.debug("["+e.request.headers["x-oring-request"]+"] Returned " + _itemsToSend.length + " event(s)");
 										}
+
 										e.response.setHeader('Access-Control-Allow-Origin', '*');
 										e.response.setHeader('Content-Type', 'application/json');
 										e.response.writeHead(200);
@@ -143,6 +151,7 @@ var create = function() {
 						  	        	e.response.end();
 									})
 									.fail(function() {
+										_log.debug("["+e.request.headers["x-oring-request"]+"] Connection was not found");
 										e.cancel();
 										/// Server does not have the client specified. Tell client to shake hands
 										var message = oringServer.createMessage("oring:reacquaint");

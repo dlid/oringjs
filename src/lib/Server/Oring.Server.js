@@ -1,14 +1,51 @@
 var extend  = require("extend"),
-		http = require('http'),
-		winston = require('winston'),
-		uuid = require('uuid'),
-		ConnectionBase = require('./Oring.Server.ConnectionBase.js'),
+    http = require('http'),
+    winston = require('winston'),
+    uuid = require('uuid'),
+    ConnectionBase = require('./Oring.Server.ConnectionBase.js'),
     OringWebMethod = require('./Oring.Server.WebMethodBase.js'),
     serverUtilities = require('./Oring.Server.Utilities.js'),
     IncomingMessageBase = require('./Oring.Server.IncomingMessageBase.js'),
     OutgoingMessageBase = require('./Oring.Server.OutgoingMessageBase.js'),
     Deferred = require('deferred-js'),
-    ConnectionManagerBasic = require('./Oring.Server.ConnectionManagerBasic.js');
+    ConnectionManagerBasic = require('./Oring.Server.ConnectionManagerBasic.js'),
+    log4js = require('log4js');
+
+log4js.configure({
+  appenders : { 
+    everything: { type: 'dateFile', filename: 'logs/oring-server.log', pattern: '.yyyy-MM-dd-hh' },
+    console : {type : 'stdout'}
+  },
+  categories : {
+      'default': { appenders : ['console', 'everything'], level : 'debug' 
+    }
+  }
+});
+
+
+process.stdin.resume();//so the program will not close instantly
+
+function exitHandler(options, err) {
+    
+    if (options.cleanup) {
+      console.log("Script End Cleanup...");
+       log4js.shutdown();
+    }
+    if (err) console.log(err.stack);
+    if (options.exit) process.exit();
+}
+
+//do something when app is closing
+process.on('exit', exitHandler.bind(null,{cleanup:true}));
+
+//catches ctrl+c event
+process.on('SIGINT', exitHandler.bind(null, {exit:true}));
+
+//catches uncaught exceptions
+process.on('uncaughtException', exitHandler.bind(null, {exit:true}));
+
+var logger = log4js.getLogger('Oring.Server.js');
+
 
 var OringServer = function(protocolArray, options) {
 
@@ -31,7 +68,7 @@ var OringServer = function(protocolArray, options) {
       _connectionManager;
 
       //if (!settings.connectionManager || (settings.connectionManager && settings.connectionManager.__proto__ == ConnectionManagerBasic) ) {
-        settings.connectionManager = new ConnectionManagerBasic();
+        settings.connectionManager = new ConnectionManagerBasic(log4js);
       //}
 
       _connectionManager = settings.connectionManager;
@@ -170,7 +207,9 @@ var OringServer = function(protocolArray, options) {
         return d.promise();
   		},
   		getParametersFromURL : serverUtilities.parseQuerystring,
-  		createLogger : createLogger,
+  		createLogger : function(name) {
+        return log4js.getLogger(name);
+      },
   		getOptions : function(name, defaults) {
 		  	if (!name) return settings;
 		  	if (typeof settings[name] !== "undefined") return settings[name];

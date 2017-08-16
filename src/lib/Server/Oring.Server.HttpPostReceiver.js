@@ -35,34 +35,37 @@ var create = function() {
 						
 
 						if (e.request.method.toLowerCase() == "post" && e.request.headers["x-oring-request"]) {
-console.log("hm");
+								_log.debug("["+e.request.headers["x-oring-request"]+"] Checking POST request");
 								var showError = null;
 								
 								oringServer.getConnectionById(e.request.headers["x-oring-request"])
 									.done(function(client) {
-										console.log("**** CLIENT " + client.getConnectionId());
+										_log.debug("["+client.getConnectionId()+"] Client verified. Updating seen-date");
 										client.seen(new Date());
-
-										console.log("  >ping client " + client.getConnectionId() + " httpPostReceiver.post");
 
 										serverUtilities.readRequestBody(e.request, function(body) {
 											e.cancel();
 											var msg = oringServer.parseIncomingMessage(body);
 
 											if(msg) {
+												_log.debug("["+client.getConnectionId()+"] Message received", msg);
+
 												oringServer.messageReceived(client.getConnectionId(), msg)
 								            	.done(function(responseMessage) {
 								            		if (responseMessage) {
-									            		console.log("responseMessage", responseMessage);
+									            		_log.debug("["+client.getConnectionId()+"] Response sent", responseMessage);
 											          	serverUtilities.createHttpResponse(e.response, 200, {}, responseMessage.toJSON());
 											         } else {
+									            		_log.debug("["+client.getConnectionId()+"] No response sent");
 											          	serverUtilities.createHttpResponse(e.response, 200, {}, "no response");
 											         }
 								            	})
 								            	.fail(function(r) {
+								            		_log.error("["+client.getConnectionId()+"] messageReceived failed", r)
 								            		serverUtilities.createHttpResponse(e.response, 200, {}, "failed (HttpPostReceiver)");
 								            	});
 											} else {
+												_log.error("["+client.getConnectionId()+"] Message could not be parsed", body);
 												var m = oringServer.createMessage('oring:invalid-msg');
 								            	serverUtilities.createHttpResponse(e.response, 200, {}, m.toJSON());
 											}

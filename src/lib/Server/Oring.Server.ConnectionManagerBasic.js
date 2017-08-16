@@ -5,13 +5,16 @@ var Deferred = require('deferred-js'),
 /**
  * A basic connection manager storing connections in memory only
  */
-var ConnectionManagerBasic = function() {
+var ConnectionManagerBasic = function(log4js) {
+
+
 
     /**
      * An object to store our connections in
      */
     var _connections = {},
-        _s = {};
+        _s = {},
+        _log = log4js.getLogger('connectionManagerBasic');
 
     function removeAll() {
         var d = new Deferred();
@@ -28,10 +31,11 @@ var ConnectionManagerBasic = function() {
      */
     function add(connectionBase) {
         var d = new Deferred();
-        console.warn("ADD CONNECTION", connectionBase);
+        _log.debug("Add connection", connectionBase);
         if (connectionBase.__proto__ == ConnectionBase) {
             if (!_connections[connectionBase.getConnectionId()]) {
                 _connections[connectionBase.getConnectionId()] = connectionBase;
+
                 d.resolve();
             }
         }
@@ -51,6 +55,7 @@ var ConnectionManagerBasic = function() {
         if (!_connections) _connections = {};
         
         if (typeof connectionId == "string") {
+                _log.debug("Remove connection", connectionId);
             if (_connections[connectionId]) {
                 delete _connections[connectionId];
             }

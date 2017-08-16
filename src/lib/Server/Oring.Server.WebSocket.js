@@ -25,17 +25,21 @@ var create = function() {
 							options = oringServer.getOptions(protocolName, this.defaultOptions),
 							_log = this._log;
 					
+
+						_log.info("options", options);
+
+						/// Setup the websocket server using the webserver
 						this._ws = new WebsocketServer({
 						      httpServer: oringServer.getWebServer(),
 						      autoAcceptConnections: false
 						});
 
+						/// Handle connection attempts
 						this._ws.on('request', function(request) {
-							console.warn("connection requested", request.requestedProtocols);
+
 							var conn = null;
 							_log.info("Connection request", request.requestedProtocols);
 							if (request.requestedProtocols.indexOf(options.protocolName) !== -1) {
-								_log.info("Connection request", request.requestedProtocols);
 								
 								var client = oringServer.createConnection({
 									send : function(msg) {
@@ -50,24 +54,29 @@ var create = function() {
 									}
 								}),
 								parameters = oringServer.getParametersFromURL(request.resource);
-								console.warn("connection requested", client.getConnectionId());
+								
+								_log.info("["+client.getConnectionId()+"] Client created");
+
 								//_log.info(client.id);
 
-								console.log("triggerConnectingEvent websocket");
 								var eventResult = oringServer.triggerConnectingEvent(client, parameters)
 									.done(function() {
 										conn = request.accept(options.protocolName, request.origin);
+										_log.info("["+client.getConnectionId()+"] WebSocket connection accepted", options.protocolName, request.origin);
 
 										oringServer.addConnection(client)
 											.done(function() {
+												_log.debug("["+client.getConnectionId()+"] Connection added");
 
 												oringServer.triggerConnectedEvent(client);
 												var handshakeResponse = oringServer.createMessage("oring:handshake", 
 													{ id : client.getConnectionId(), methods : oringServer.getMethodsForClient(client)} );
 
+												_log.debug("["+client.getConnectionId()+"] Sending handshake");
 												client.send(handshakeResponse);
 
 												conn.on('close', function() {
+													_log.debug("["+client.getConnectionId()+"] Websocket connection was lost");
 													oringServer.lostConnection(client.getConnectionId()).done(function() {
 														oringServer.triggerDisconnectedEvent(client);
 													});
@@ -78,6 +87,7 @@ var create = function() {
 													if (e.type == 'utf8') {
 														var msg = oringServer.parseIncomingMessage(e.utf8Data);
 														if(msg) {
+															_log.debug("["+client.getConnectionId()+"] Message received", msg);
 															oringServer.messageReceived(client.getConnectionId(), msg)
 											            	.done(function(responseMessage) {
 											            		if (responseMessage) {
@@ -101,7 +111,7 @@ var create = function() {
 										
 									})
 									.fail(function() {
-										console.log("kom hit iaf");
+										_log.info("["+client.getConnectionId()+"] Client refused by 'connecting' event");
 										var handshakeResponse = oringServer.createMessage("oring:connection-rejected");
 										request.reject(403, "nej");
 									});
