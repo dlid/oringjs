@@ -28,8 +28,14 @@ function WebSocketClient(name) {
 		var deferred = _core.Deferred(),
 		qs = {};
 
+		console.log("start",uri,hubs,opt);
+
 		if (hubs && hubs.length > 0) {
 			qs['__oringhubs'] = encodeURIComponent(hubs.join(','));
+		}
+
+		if (opt.connectionId) {
+			qs['__reconnect'] = opt.connectionId;
 		}
 
 		url = createUrl(combineUrl(uri, {

@@ -597,11 +597,14 @@
   			qs['__oringhubs'] = encodeURIComponent(hubs.join(','));
   		}
 
+  		if (opt.connectionId) {
+  			qs['__reconnect'] = opt.connectionId;
+  		}
+
   		url = createUrl(combineUrl(uri, {
   			schema : "http",
   			querystring : qs
   		}));
-
 
   	
   		ajax({
@@ -825,6 +828,9 @@
               this.c.stop();
       },
 
+      getConnectionId : function() {
+          return this.id;
+      },
 
      // Initialize
      start : function(currentClient, handshakeCompleteCallback) {
@@ -853,11 +859,13 @@
                       connectionContext = Object.create(ConnectionContext);
 
                       if (connectionContext.setupContext(m, self)) {
+
+                          self.id = m.data.id;
+
                           this.handshakeComplete = true;
                           connectionContext.oring = {
                               transferProtocol : currentClient.name
                           };
-                          console.warn("CONTEXT IS SETUP", connectionContext);
                           handshakeCompleteCallback(connectionContext);
                       }
 
@@ -888,6 +896,8 @@
   var ConnectionContext = {
       
       _eventhandlers : {},
+
+      _id : null,
 
       /**
        * Listen for a serverside event
@@ -1057,8 +1067,14 @@
   		var deferred = _core.Deferred(),
   		qs = {};
 
+  		console.log("start",uri,hubs,opt);
+
   		if (hubs && hubs.length > 0) {
   			qs['__oringhubs'] = encodeURIComponent(hubs.join(','));
+  		}
+
+  		if (opt.connectionId) {
+  			qs['__reconnect'] = opt.connectionId;
   		}
 
   		url = createUrl(combineUrl(uri, {
@@ -1139,13 +1155,17 @@
 
   	var _uri = parseUrl(options.url);
 
+
+
+
   	// Loop through the protocols and connect to the first one possible
   	function connect() {
   			var deferred = _core.Deferred();
-
+  			console.log("Attempting to connect...");
   			var c = null,
   				ix = -1,
-  				handshakeComplete = false;
+  				handshakeComplete = false,
+  				_
 
   			function tryNext() {
   				ix+=1;
@@ -1154,8 +1174,13 @@
   					c = new _preferredClients[ix].class(_preferredClients[ix].name);
   					
   					
-  					c.start(_uri, settings.hubs, {parseMessage : parseMessage})
+  					c.start(_uri, settings.hubs, {
+  						parseMessage : parseMessage,
+  						connectionId : _connection ? _connection.getConnectionId() : null
+  					})
   						.done(function(e) {
+
+  							console.warn("CONNECTION STABLISHED!")
 
   							c.onclose = function() {
   								console.error("Connection was lost!!!! NOOOO!");
@@ -1170,8 +1195,10 @@
   							_connection = Object.create(OringConnection);
   							_connection.onclose = function() {
   								console.warn("_connection closed");
+  								setTimeout(connect, 50);
   							}
   							_connection.start(c, function(context) {
+  								console.warn("context", context);
   								deferred.resolve(context);
   							});	
 
@@ -1186,10 +1213,8 @@
   						});
 
   				} else {
+  					console.log("All connection attempts failed. Will soon retry...");
   					deferred.reject();
-  					setTimeout(function() {
-  						deferred.reject();
-  					})
   				}
   			}
 
@@ -1199,7 +1224,7 @@
   	}
 
 
-  	this.start = function(connectCallback) {
+  	this.start = function(connectCallback, failCallback) {
   		connectCallback = connectCallback;
   		_isEnabled = true;
   		logInfo("Attempting to connect...");
@@ -1209,10 +1234,8 @@
   				connectCallback(connectionContext);
   			})
   			.fail(function() {
-  				if (_isEnabled) {
-  					logInfo("Could not connect. Waiting to retry...");
-  					setTimeout(attemptConnect, 5000);
-  				}
+  				console.warn("CLAL FAIL CALLBACK!");
+  				failCallback();
   			})
   		}
   		attemptConnect();

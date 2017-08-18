@@ -47,7 +47,7 @@ var create = function() {
 										if (conn) {
 											if (msg.__proto__ == OutgoingMessageBase) {
 												var str = msg.toJSON();
-												console.warn(id + " ws.send " + str);
+												_log.debug("[" + id + "].send", str);
 												conn.send(str);
 											}
 										}
@@ -77,6 +77,7 @@ var create = function() {
 
 												conn.on('close', function() {
 													_log.debug("["+client.getConnectionId()+"] Websocket connection was lost");
+													client.seen(new Date());
 													oringServer.lostConnection(client.getConnectionId()).done(function() {
 														oringServer.triggerDisconnectedEvent(client);
 													});
@@ -87,6 +88,7 @@ var create = function() {
 													if (e.type == 'utf8') {
 														var msg = oringServer.parseIncomingMessage(e.utf8Data);
 														if(msg) {
+															client.seen(new Date());
 															_log.debug("["+client.getConnectionId()+"] Message received", msg);
 															oringServer.messageReceived(client.getConnectionId(), msg)
 											            	.done(function(responseMessage) {
@@ -105,6 +107,7 @@ var create = function() {
 											})
 											.fail(function() {
 												var handshakeResponse = oringServer.createMessage("oring:connection-failed");
+												client.seen(new Date());
 												client.send(handshakeResponse);
 												conn.close();
 											});

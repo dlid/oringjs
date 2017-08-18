@@ -6,8 +6,23 @@ var ConnectionBase = {
 	protocolName : null,
 	properties : {},
 	send : null,
+	onUpdated : function() {},
+	toJSON : function() {
+		return { 
+			"connectionId" : this.connectionId,
+			"properties" : this.getProperties(),
+			"protocolName" : this.protocolName
+		};
+	},
 	setProperty : function(name, value) {
 		this.properties[name] = value;
+		if(this.onUpdated) this.onUpdated();
+	},
+	removeProperty : function(name) {
+		if(this.properties[name]) {
+			delete this.properties[name];
+			if(this.onUpdated) this.onUpdated();
+		}
 	},
 	getProperty : function(name, defaultValue) {
 		if(typeof this.properties[name] !== "undefined") return this.properties[name];
@@ -16,7 +31,6 @@ var ConnectionBase = {
 	getProperties : function() {
 		return extend({}, this.properties);
 	},
-
 	/**
 	 * Determines if it has a property matching name and/or value.
 	 *
@@ -69,9 +83,10 @@ var ConnectionBase = {
 	},
 	seen : function(newValue) {
 		if (newValue) {
+			if (newValue.__proto__ == Date.prototype)
+				newValue = newValue.getTime();
 			this.setProperty('__seen', newValue);
-		}
-		else  {
+		} else  {
 			return this.getProperty('__seen', null);
 		}
 	},
@@ -87,4 +102,19 @@ var ConnectionBase = {
 		return o;
 	}
 };
+
+ConnectionBase.__proto__._fromObject = function(o) {
+	
+	if (o.properties && o.connectionId && o.protocolName) {
+		return Object.create(ConnectionBase, {
+			properties: {value: o.properties},
+			connectionId: {value: o.connectionId},
+			protocolName: {value: o.protocolName}
+		});
+	} 
+	return null;
+
+
+}
+
 module.exports = ConnectionBase;

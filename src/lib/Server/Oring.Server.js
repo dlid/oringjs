@@ -67,11 +67,16 @@ var OringServer = function(protocolArray, options) {
       _disconnectedClients = {},
       _connectionManager;
 
+      _logger = log4js.getLogger('oring.server');
+
       //if (!settings.connectionManager || (settings.connectionManager && settings.connectionManager.__proto__ == ConnectionManagerBasic) ) {
         settings.connectionManager = new ConnectionManagerBasic(log4js);
       //}
 
       _connectionManager = settings.connectionManager;
+      _connectionManager.ready(function() {
+        _logger.info("Connectionmanager is ready");
+      });
 
 		this.getWebServer = function() {
 	  	return _webServer;
@@ -409,7 +414,7 @@ var OringServer = function(protocolArray, options) {
   	_eventhandlers[eventName].push(callback);
   }
 
-  _logger = createLogger('oring.server');
+  
 
   function createWebMethod(functionName, callback) {
       var method;

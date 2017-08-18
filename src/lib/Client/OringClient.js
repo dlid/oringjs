@@ -36,13 +36,17 @@ function OringClient(options) {
 
 	var _uri = parseUrl(options.url);
 
+
+
+
 	// Loop through the protocols and connect to the first one possible
 	function connect() {
 			var deferred = _core.Deferred();
-
+			console.log("Attempting to connect...");
 			var c = null,
 				ix = -1,
-				handshakeComplete = false;
+				handshakeComplete = false,
+				_
 
 			function tryNext() {
 				ix+=1;
@@ -51,8 +55,13 @@ function OringClient(options) {
 					c = new _preferredClients[ix].class(_preferredClients[ix].name);
 					
 					
-					c.start(_uri, settings.hubs, {parseMessage : parseMessage})
+					c.start(_uri, settings.hubs, {
+						parseMessage : parseMessage,
+						connectionId : _connection ? _connection.getConnectionId() : null
+					})
 						.done(function(e) {
+
+							console.warn("CONNECTION STABLISHED!")
 
 							c.onclose = function() {
 								console.error("Connection was lost!!!! NOOOO!");
@@ -67,8 +76,10 @@ function OringClient(options) {
 							_connection = Object.create(OringConnection);
 							_connection.onclose = function() {
 								console.warn("_connection closed");
+								setTimeout(connect, 50);
 							}
 							_connection.start(c, function(context) {
+								console.warn("context", context);
 								deferred.resolve(context);
 							});	
 
@@ -83,10 +94,8 @@ function OringClient(options) {
 						});
 
 				} else {
+					console.log("All connection attempts failed. Will soon retry...");
 					deferred.reject();
-					setTimeout(function() {
-						deferred.reject();
-					})
 				}
 			}
 
@@ -96,7 +105,7 @@ function OringClient(options) {
 	}
 
 
-	this.start = function(connectCallback) {
+	this.start = function(connectCallback, failCallback) {
 		connectCallback = connectCallback;
 		_isEnabled = true;
 		logInfo("Attempting to connect...");
@@ -106,10 +115,8 @@ function OringClient(options) {
 				connectCallback(connectionContext);
 			})
 			.fail(function() {
-				if (_isEnabled) {
-					logInfo("Could not connect. Waiting to retry...");
-					setTimeout(attemptConnect, 5000);
-				}
+				console.warn("CLAL FAIL CALLBACK!");
+				failCallback();
 			})
 		}
 		attemptConnect();

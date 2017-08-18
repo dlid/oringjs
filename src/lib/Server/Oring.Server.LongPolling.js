@@ -65,9 +65,9 @@ var create = function() {
 											function checkIfSeen(connectionId) {
 												oringServer.getConnectionById(connectionId).done(function(c) {
 													var now = new Date(),
-														seen = c.seen();
-													if (seen) {
-														var diff = now.getTime() - seen.getTime();
+														seenTimestamp = c.seen();
+													if (seenTimestamp) {
+														var diff = now.getTime() - seenTimestamp;
 														if (diff > 20000) {
 															_log.debug("["+client.getConnectionId()+"] Client timed out");
 															oringServer.lostConnection(connectionId).done(function() {

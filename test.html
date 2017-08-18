@@ -55,33 +55,47 @@
 	function log(text) {document.getElementById('log').innerHTML += text + "<br>";}
 
 
-        var button = document.querySelector('.connect');
-            button.onclick = function(e) {
-                var protocols = [];
-                var cbx = document.querySelectorAll('input.protocol');
-                for (var i=0; i < cbx.length; i++) {
-                    if (cbx[i].checked)
-                        protocols.push(cbx[i].getAttribute('value'));
-                }
-                
+        var oringClient,
+            protcols, 
+            button = document.querySelector('.connect');
+            
+        button.onclick = function(e) {
+            protocols = [];
+            var cbx = document.querySelectorAll('input.protocol');
+            for (var i=0; i < cbx.length; i++) {
+                if (cbx[i].checked)
+                    protocols.push(cbx[i].getAttribute('value'));
+            }
 
-                //document.getElementById('connect').style.display = 'none';
-                connect(protocols.join(','));
-            };
-
-
-        function connect(protocols) {
-            log('Attempt to connect using ' + protocols);
-
-            var oringClient = oring.create("http://localhost:1234?hej=3", {
-                transferProtocols : protocols.split(','),
+             oringClient = oring.create("http://localhost:1234?hej=3", {
+                transferProtocols : protocols,
                 hubs : ['scrapbook', 'user']
             });
+            
+
+            //document.getElementById('connect').style.display = 'none';
+            connect();
+        };
+
+        
+
+
+        function connect() {
+            log('Attempt to connect using ' + protocols);
+
+            
+
+
 
             oringClient.start(function(conn) {
+
+
+
                  document.getElementById('status-light').style.backgroundColor = 'green';
                  document.getElementById('status-text').innerHTML = 'Connected using <strong>' + conn.oring.transferProtocol + "</strong>";
 
+
+                // if (conn.isFirst)
                 conn.on('onChatMessage', function(e) {
 
                     document.getElementById('chat').innerHTML += '<p>' + e.user + ': ' + e.message + '</p>';
@@ -94,7 +108,10 @@
                     console.warn("RECEIVED connections EVENT", e);
                 });
 
-                
+                conn.on('oring.closed', function(e) {
+                    console.warn("CLOSED!!!", e);
+                });
+                                
                 conn.setAlias(document.getElementById('alias').value).done(function() {
 
                 });
@@ -118,6 +135,10 @@
                 }
 
 
+            }, function() {
+                // FAIL?!
+                console.log("all failed. Retry in 5...");
+                setTimeout(connect, 5000);
             });
 
         }

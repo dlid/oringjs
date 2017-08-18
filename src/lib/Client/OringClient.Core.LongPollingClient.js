@@ -62,11 +62,14 @@ function LongPollingClient(name) {
 			qs['__oringhubs'] = encodeURIComponent(hubs.join(','));
 		}
 
+		if (opt.connectionId) {
+			qs['__reconnect'] = opt.connectionId;
+		}
+
 		url = createUrl(combineUrl(uri, {
 			schema : "http",
 			querystring : qs
 		}));
-
 
 	
 		ajax({

@@ -29,6 +29,9 @@
             this.c.stop();
     },
 
+    getConnectionId : function() {
+        return this.id;
+    },
 
    // Initialize
    start : function(currentClient, handshakeCompleteCallback) {
@@ -57,11 +60,13 @@
                     connectionContext = Object.create(ConnectionContext);
 
                     if (connectionContext.setupContext(m, self)) {
+
+                        self.id = m.data.id;
+
                         this.handshakeComplete = true;
                         connectionContext.oring = {
                             transferProtocol : currentClient.name
                         };
-                        console.warn("CONTEXT IS SETUP", connectionContext);
                         handshakeCompleteCallback(connectionContext);
                     }
 
@@ -92,6 +97,8 @@
 var ConnectionContext = {
     
     _eventhandlers : {},
+
+    _id : null,
 
     /**
      * Listen for a serverside event
